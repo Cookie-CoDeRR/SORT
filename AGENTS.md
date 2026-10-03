@@ -10,3 +10,9 @@
 - Work on one milestone task at a time. Do not implement features from later milestones.
 - Do not use localStorage for anything gameplay-related.
 - After each task, summarize: files changed, how to run, how it was verified, open questions.
+
+## Story mode rules
+- Story content (beats, dialogue, cutscenes) is JSON under packages/shared/src/content and validated by zod. Do not hardcode story text in code.
+- The StoryDirector is server-side and deterministic. Clients never advance the story themselves.
+- Cutscene gameplay locks are applied by the server. The camera and visuals are client-only.
+- Do not change PvP behavior. Campaign code lives in CampaignRoom and story-specific modules.

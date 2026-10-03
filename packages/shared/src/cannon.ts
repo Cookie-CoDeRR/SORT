@@ -10,8 +10,12 @@ import {
     CANNON_PITCH_MAX,
     CANNON_MUZZLE_SPEED,
     CANNON_COUNT_PER_SIDE,
+    CANNON_COUNT_BOW,
+    CANNON_COUNT_STERN,
     CANNON_LOCAL_X,
     CANNON_LOCAL_Y,
+    CANNON_FORE_LOCAL_Y,
+    CANNON_POOP_LOCAL_Y,
     CANNON_STACK_SIZE,
     BARREL_STACK_CAPACITY,
     BARREL_START_STACKS,
@@ -25,17 +29,17 @@ export const DEG = Math.PI / 180;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type CannonSide = "L" | "R";
+export type CannonSide = "L" | "R" | "F" | "B";
 
 export interface CannonState {
     side: CannonSide;
-    /** Index on the side (0, 1, 2 ...) */
+    /** Index on the side/deck (0, 1, 2 ...) */
     index: number;
     /** Cannon progression level (1 = Bronze, 2 = Silver, 3 = Gold) */
     level: number;
     /** Total hits scored with this cannon */
     xp: number;
-    /** Aim yaw offset from ship-beam direction, radians */
+    /** Aim yaw offset from neutral facing direction, radians */
     aimYaw: number;
     /** Aim pitch, radians */
     aimPitch: number;
@@ -64,14 +68,24 @@ export interface PlayerAmmo {
 // ── Cannon local positions relative to ship centre ───────────────────────────
 
 /**
- * Returns the local (x, y, z) offset of each cannon barrel on a side.
- * Uses CANNON_LOCAL_X / CANNON_LOCAL_Y from constants (match shipBuilder.ts).
+ * Returns the local (x, y, z) offset of each cannon barrel.
+ * Supports L (port), R (starboard), F (forecastle / bow chasers), B (poop deck / stern chasers).
  */
 export function cannonLocalPos(
     side: CannonSide,
     index: number,
     count: number = CANNON_COUNT_PER_SIDE,
 ): { x: number; y: number; z: number } {
+    if (side === "F") {
+        // 2 Front Bow Chasers on Forecastle Deck (Z = 14.5, X = -2.2 and +2.2)
+        const sign = index === 0 ? -1 : 1;
+        return { x: sign * 2.2, y: CANNON_FORE_LOCAL_Y, z: 14.5 };
+    }
+    if (side === "B") {
+        // 2 Back Stern Chasers on Poop Deck (Z = -15.5, X = -2.2 and +2.2)
+        const sign = index === 0 ? -1 : 1;
+        return { x: sign * 2.2, y: CANNON_POOP_LOCAL_Y, z: -15.5 };
+    }
     const sign = side === "L" ? -1 : 1;
     const spacing = 1.0 / (count + 1);
     const localZ = ((index + 1) * spacing - 0.5) * 20 + 0.5;
@@ -82,6 +96,7 @@ export function cannonLocalPos(
 
 export function createCannonShipState(): CannonShipState {
     const cannons: CannonState[] = [];
+    // Broadside Cannons (Port & Starboard)
     for (const side of ["L", "R"] as CannonSide[]) {
         for (let i = 0; i < CANNON_COUNT_PER_SIDE; i++) {
             cannons.push({
@@ -93,9 +108,37 @@ export function createCannonShipState(): CannonShipState {
                 aimPitch:    5 * DEG,
                 reloadTimer: 0,
                 occupied:    false,
-                ammoLoaded:  CANNON_START_AMMO,   // starts empty — player must fetch and load
+                ammoLoaded:  CANNON_START_AMMO,
             });
         }
+    }
+    // Front Bow Chaser Cannons (2 cannons)
+    for (let i = 0; i < CANNON_COUNT_BOW; i++) {
+        cannons.push({
+            side: "F",
+            index: i,
+            level: 1,
+            xp: 0,
+            aimYaw:      0,
+            aimPitch:    5 * DEG,
+            reloadTimer: 0,
+            occupied:    false,
+            ammoLoaded:  CANNON_START_AMMO,
+        });
+    }
+    // Back Stern Chaser Cannons (2 cannons)
+    for (let i = 0; i < CANNON_COUNT_STERN; i++) {
+        cannons.push({
+            side: "B",
+            index: i,
+            level: 1,
+            xp: 0,
+            aimYaw:      0,
+            aimPitch:    5 * DEG,
+            reloadTimer: 0,
+            occupied:    false,
+            ammoLoaded:  CANNON_START_AMMO,
+        });
     }
     return { cannons, barrelStacks: BARREL_START_STACKS };
 }
@@ -213,7 +256,12 @@ export function fireCannon(
     c.reloadTimer = CANNON_RELOAD_TIME * reloadMultiplier;
     c.ammoLoaded -= 1;
 
-    const beamOffset = c.side === "L" ? -Math.PI / 2 : Math.PI / 2;
+    let beamOffset = 0;
+    if (c.side === "L") beamOffset = -Math.PI / 2;
+    else if (c.side === "R") beamOffset = Math.PI / 2;
+    else if (c.side === "F") beamOffset = 0;
+    else if (c.side === "B") beamOffset = Math.PI;
+
     const worldAimYaw = shipHeading + beamOffset + c.aimYaw;
 
     return { fired: true, worldAimYaw, aimPitch: c.aimPitch, muzzleSpeed: CANNON_MUZZLE_SPEED };

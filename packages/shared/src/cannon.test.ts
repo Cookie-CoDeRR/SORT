@@ -27,7 +27,7 @@ import {
 describe("Cannon System", () => {
     it("initializes ship cannons and central barrel correctly", () => {
         const cs = createCannonShipState();
-        expect(cs.cannons.length).toBe(6);
+        expect(cs.cannons.length).toBe(10); // 3 Port + 3 Starboard + 2 Bow + 2 Stern
         expect(cs.barrelStacks).toBe(BARREL_START_STACKS);
 
         for (const c of cs.cannons) {
@@ -53,7 +53,7 @@ describe("Cannon System", () => {
         expect(left.z).toBe(right.z);
     });
 
-    it("positions 3 cannons at Z = -4.5, 0.5, 5.5 and X = ±4.3 matching ship gunports", () => {
+    it("positions 3 broadside cannons at Z = -4.5, 0.5, 5.5 and X = ±4.3 matching ship gunports", () => {
         const c0 = cannonLocalPos("R", 0);
         const c1 = cannonLocalPos("R", 1);
         const c2 = cannonLocalPos("R", 2);
@@ -64,6 +64,22 @@ describe("Cannon System", () => {
 
         const left0 = cannonLocalPos("L", 0);
         expect(left0.x).toBeCloseTo(-4.3);
+    });
+
+    it("positions 2 front bow chasers and 2 back stern chasers", () => {
+        const f0 = cannonLocalPos("F", 0);
+        const f1 = cannonLocalPos("F", 1);
+        expect(f0.z).toBeCloseTo(14.5);
+        expect(f1.z).toBeCloseTo(14.5);
+        expect(f0.x).toBeCloseTo(-2.2);
+        expect(f1.x).toBeCloseTo(2.2);
+
+        const b0 = cannonLocalPos("B", 0);
+        const b1 = cannonLocalPos("B", 1);
+        expect(b0.z).toBeCloseTo(-15.5);
+        expect(b1.z).toBeCloseTo(-15.5);
+        expect(b0.x).toBeCloseTo(-2.2);
+        expect(b1.x).toBeCloseTo(2.2);
     });
 
     it("picks up and deposits stacks from/to the central barrel", () => {

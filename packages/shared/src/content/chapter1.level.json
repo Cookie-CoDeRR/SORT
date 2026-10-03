@@ -1,0 +1,69 @@
+{
+  "id": "chapter1_level",
+  "units": "meters",
+  "axes": "x = east, z = north (forward). Bearing 0 deg = +z, 90 deg = +x. Origin is the map center.",
+  "bounds": { "playRadius": 2000, "stormWallRadius": 2300 },
+  "spawn": { "pos": [-1400, -1300], "headingDeg": 40 },
+
+  "route": [
+    { "id": "r0",  "pos": [-500, -200], "note": "W4 lightning reveal point" },
+    { "id": "r1",  "pos": [-300, -20] },
+    { "id": "r2",  "pos": [-150, 150] },
+    { "id": "r3",  "pos": [60, 330] },
+    { "id": "r4",  "pos": [120, 500], "note": "W5 second light cinematic" },
+    { "id": "r5",  "pos": [360, 480] },
+    { "id": "r6",  "pos": [470, 600] },
+    { "id": "r7",  "pos": [480, 740], "note": "gate approach" },
+    { "id": "r8",  "pos": [506, 826], "note": "Maw Gate center" },
+    { "id": "r9",  "pos": [640, 960], "note": "Maw Basin center (Kraken arena)" }
+  ],
+
+  "landmarks": [
+    { "id": "wreck_field", "type": "wreck_field", "pos": [-1050, -950], "radius": 120,
+      "props": ["wreck_pile x3 at (-1020,-930) (-1070,-980) (-990,-1010)", "floating barrels x12", "broken mast x2"] },
+    { "id": "broken_tooth", "type": "sea_stack", "pos": [-250, 100], "radius": 40, "height": 60,
+      "props": ["rock_spire_large x1", "foam ring", "gulls (storm: none)"], "collider": true },
+    { "id": "gravebell_shoal", "type": "reef", "pos": [-100, 330], "radius": 80, "height": 2,
+      "props": ["reef_low x1", "bell_buoy at (-100,330)", "kelp patches"], "collider": true },
+    { "id": "needle_rocks", "type": "rock_cluster", "pos": [300, 640], "radius": 120, "height": 35,
+      "props": ["rock_spire x7 random in radius, seed 17", "sunken hulk x2 (Reaver hideouts)"], "collider": true },
+    { "id": "twin_sister_a", "type": "islet", "pos": [439, 893], "radius": 45, "height": 30,
+      "props": ["rock_spire_large", "rope bridge remains", "one old lantern post"], "collider": true },
+    { "id": "twin_sister_b", "type": "islet", "pos": [573, 759], "radius": 45, "height": 30,
+      "props": ["rock_spire_large", "wrecked rowboat", "bones"], "collider": true },
+    { "id": "maw_teeth", "type": "rock_ring", "center": [640, 960], "ringRadius": 190, "count": 10,
+      "gapCenterDeg": 225, "gapHalfWidthDeg": 28, "height": 45,
+      "props": ["rock_tooth x10, jagged, slightly leaning inward"], "collider": true },
+    { "id": "maw_basin", "type": "arena", "pos": [640, 960], "radius": 160,
+      "props": ["half-sunk wrecks x3 at ring edge", "chains hanging between teeth", "bioluminescent water (emissive blue-green) during the quiet", "floating bones and spars x20"] },
+    { "id": "lantern_isle", "type": "island", "pos": [900, 1300], "radius": 260, "height": 90,
+      "props": ["hill with ruined stone tower at (940,1340)", "lantern flame + beam at tower top", "dark pine-like trees", "south beach at (860,1060)", "cliffs on north and west sides"] },
+    { "id": "mourners_reach", "type": "far_island", "pos": [-900, 700], "radius": 150, "height": 50,
+      "props": ["silhouette only, seen in lightning, behind fog"] },
+    { "id": "pale_spit", "type": "far_island", "pos": [1500, 500], "radius": 120, "height": 25,
+      "props": ["silhouette only, seen after the storm calms"] }
+  ],
+
+  "lights": [
+    { "id": "island_lantern", "pos": [940, 1340], "height": 100, "color": "#ffb347",
+      "states": ["off", "flicker", "beam_sweep", "steady"] }
+  ],
+
+  "triggers": [
+    { "id": "t_wreck_field",   "pos": [-1050, -950], "r": 150, "beat": "s2_loose_iron" },
+    { "id": "t_breach",        "pos": [-750, -550],  "r": 70,  "beat": "s3_breach" },
+    { "id": "t_reveal",        "pos": [-500, -200],  "r": 80,  "beat": "s4_lightning_chart" },
+    { "id": "t_light2",        "pos": [120, 500],    "r": 90,  "beat": "s5a_light_returns" },
+    { "id": "t_ambush",        "pos": [360, 480],    "r": 120, "beat": "s5b_reavers" },
+    { "id": "t_gate",          "pos": [506, 826],    "r": 60,  "beat": "s5c_the_quiet" },
+    { "id": "t_basin_center",  "pos": [640, 960],    "r": 70,  "beat": "s6_rising" }
+  ],
+
+  "npcShips": [
+    { "id": "reaver_1", "spawn": [250, 660], "headingDeg": 90, "state": "dark_until_ambush" },
+    { "id": "reaver_2", "spawn": [330, 700], "headingDeg": 120, "state": "dark_until_ambush" }
+  ],
+
+  "reaverFleeHeadingDeg": 300,
+  "reaverFleeDespawnDistance": 900
+}

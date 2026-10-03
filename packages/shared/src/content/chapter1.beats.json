@@ -1,0 +1,224 @@
+{
+  "chapterId": "ch1_widows_lantern",
+  "title": "The Night of the Widow's Lantern",
+  "initialBeat": "s0_cold_open",
+  "beats": [
+    {
+      "id": "s0_cold_open",
+      "enter": [
+        { "do": "fade", "black": true, "seconds": 0 },
+        { "do": "setWeather", "intensity": 0.8, "seconds": 0 },
+        { "do": "playCutscene", "id": "cutscene_s0_wake" },
+        { "do": "say", "line": "s0_pip_wake_1" }
+      ],
+      "triggers": [
+        { "when": "cutsceneFinished", "id": "cutscene_s0_wake", "then": "s1_the_wheel" }
+      ],
+      "exit": [
+        { "do": "fade", "black": false, "seconds": 2 }
+      ],
+      "next": "s1_the_wheel"
+    },
+    {
+      "id": "s1_the_wheel",
+      "enter": [
+        { "do": "setObjective", "text": "Take the helm and keep the bow into the swells" },
+        { "do": "say", "line": "s1_vance_order_1" }
+      ],
+      "triggers": [
+        { "when": "timeElapsed", "s": 25, "then": "s2_loose_iron" },
+        { "when": "objectiveDone", "id": "obj_helm_held", "then": "s2_loose_iron" }
+      ],
+      "exit": [
+        { "do": "say", "line": "s1_vance_good" }
+      ],
+      "next": "s2_loose_iron"
+    },
+    {
+      "id": "s2_loose_iron",
+      "enter": [
+        { "do": "setObjective", "text": "Shoot drifting wreckage blocking the channel" },
+        { "do": "spawn", "type": "wreckage_drift" },
+        { "do": "say", "line": "s2_tobin_intro" }
+      ],
+      "triggers": [
+        { "when": "allEnemiesDead", "group": "wreckage_drift", "then": "s3_breach" },
+        { "when": "timeElapsed", "s": 45, "then": "s3_breach" }
+      ],
+      "exit": [
+        { "do": "say", "line": "s2_tobin_done" }
+      ],
+      "next": "s3_breach"
+    },
+    {
+      "id": "s3_breach",
+      "enter": [
+        { "do": "setObjective", "text": "Hull breached! Patch leaks with planks and bail bilge water" },
+        { "do": "playCutscene", "id": "cutscene_s3_rogue_wave" },
+        { "do": "say", "line": "s3_ismene_shout" }
+      ],
+      "triggers": [
+        { "when": "hpBelow", "entity": "ship_water", "pct": 0.2, "then": "s4_lightning_chart" },
+        { "when": "timeElapsed", "s": 40, "then": "s4_lightning_chart" }
+      ],
+      "exit": [
+        { "do": "checkpoint" }
+      ],
+      "next": "s4_lightning_chart"
+    },
+    {
+      "id": "s4_lightning_chart",
+      "enter": [
+        { "do": "setObjective", "text": "Cast your crew vote: Make for the light, or ride out the storm" },
+        { "do": "playCutscene", "id": "cutscene_s4_lightning_reveal" },
+        { "do": "say", "line": "s4_pip_light" },
+        {
+          "do": "startVote",
+          "id": "vote_island_choice",
+          "options": [
+            { "id": "opt_island", "label": "Make for the light", "flagKey": "chose_island", "flagValue": true },
+            { "id": "opt_ride_out", "label": "Ride out the storm", "flagKey": "chose_island", "flagValue": false }
+          ]
+        }
+      ],
+      "triggers": [
+        { "when": "voteResult", "id": "vote_island_choice", "then": "s5_the_quiet" },
+        { "when": "timeElapsed", "s": 30, "then": "s5_the_quiet" }
+      ],
+      "exit": [
+        { "do": "say", "line": "s4_vance_conclusion" }
+      ],
+      "next": "s5_the_quiet"
+    },
+    {
+      "id": "s5_the_quiet",
+      "enter": [
+        { "do": "setObjective", "text": "Sail toward the mysterious island light through the calm" },
+        { "do": "setWeather", "intensity": 0.15, "seconds": 30 },
+        { "do": "say", "line": "s5_pip_silence" }
+      ],
+      "triggers": [
+        { "when": "shipInZone", "x": 0, "z": 850, "r": 150, "then": "s6_rising" },
+        { "when": "timeElapsed", "s": 45, "then": "s6_rising" }
+      ],
+      "exit": [
+        { "do": "say", "line": "s5_tobin_compass" }
+      ],
+      "next": "s6_rising"
+    },
+    {
+      "id": "s6_rising",
+      "enter": [
+        { "do": "playCutscene", "id": "cutscene_s6_kraken_rising" },
+        { "do": "setObjective", "text": "THE KRAKEN RISES: Prepare for battle!" },
+        { "do": "say", "line": "s6_vance_all_hands" }
+      ],
+      "triggers": [
+        { "when": "cutsceneFinished", "id": "cutscene_s6_kraken_rising", "then": "s7a_phase1" }
+      ],
+      "exit": [],
+      "next": "s7a_phase1"
+    },
+    {
+      "id": "s7a_phase1",
+      "enter": [
+        { "do": "startBoss", "phase": 1 },
+        { "do": "setObjective", "text": "Sever 3 Kraken tentacles! Target glowing joints with cannons" },
+        { "do": "setWeather", "intensity": 0.85, "seconds": 10 }
+      ],
+      "triggers": [
+        { "when": "flagSet", "key": "kraken_phase1_done", "value": true, "then": "s7b_tobin_death" }
+      ],
+      "exit": [
+        { "do": "checkpoint" }
+      ],
+      "next": "s7b_tobin_death"
+    },
+    {
+      "id": "s7b_tobin_death",
+      "enter": [
+        { "do": "playCutscene", "id": "cutscene_s7b_tobin_sacrifice" },
+        { "do": "say", "line": "s7b_tobin_line" }
+      ],
+      "triggers": [
+        { "when": "cutsceneFinished", "id": "cutscene_s7b_tobin_sacrifice", "then": "s7c_phase2" }
+      ],
+      "exit": [
+        { "do": "setFlag", "key": "tobin_alive", "value": false },
+        { "do": "setFlag", "key": "pip_has_compass", "value": true }
+      ],
+      "next": "s7c_phase2"
+    },
+    {
+      "id": "s7c_phase2",
+      "enter": [
+        { "do": "startBoss", "phase": 2 },
+        { "do": "setObjective", "text": "The tentacles are grabbing the hull! Destroy them before we're dragged under!" }
+      ],
+      "triggers": [
+        { "when": "flagSet", "key": "kraken_phase2_done", "value": true, "then": "s7d_ismene_death" }
+      ],
+      "exit": [
+        { "do": "checkpoint" }
+      ],
+      "next": "s7d_ismene_death"
+    },
+    {
+      "id": "s7d_ismene_death",
+      "enter": [
+        { "do": "playCutscene", "id": "cutscene_s7d_ismene_lantern" },
+        { "do": "say", "line": "s7d_ismene_forgive" }
+      ],
+      "triggers": [
+        { "when": "cutsceneFinished", "id": "cutscene_s7d_ismene_lantern", "then": "s7e_phase3" }
+      ],
+      "exit": [
+        { "do": "setFlag", "key": "ismene_alive", "value": false }
+      ],
+      "next": "s7e_phase3"
+    },
+    {
+      "id": "s7e_phase3",
+      "enter": [
+        { "do": "startBoss", "phase": 3 },
+        { "do": "autopilot", "on": true, "heading": 0 },
+        { "do": "setObjective", "text": "Last stand! Captain Vance has the helm — fire everything at the giant tentacles!" },
+        { "do": "say", "line": "s7e_vance_fire" }
+      ],
+      "triggers": [
+        { "when": "flagSet", "key": "kraken_phase3_done", "value": true, "then": "s8_the_wave" }
+      ],
+      "exit": [],
+      "next": "s8_the_wave"
+    },
+    {
+      "id": "s8_the_wave",
+      "enter": [
+        { "do": "playCutscene", "id": "cutscene_s8_colossal_wave" },
+        { "do": "setObjective", "text": "Lash yourselves! Colossal wave incoming!" },
+        { "do": "say", "line": "s8_vance_lash" }
+      ],
+      "triggers": [
+        { "when": "cutsceneFinished", "id": "cutscene_s8_colossal_wave", "then": "s9_the_beach" }
+      ],
+      "exit": [
+        { "do": "fade", "black": true, "seconds": 1 },
+        { "do": "teleportToMap", "mapId": "island_beach" }
+      ],
+      "next": "s9_the_beach"
+    },
+    {
+      "id": "s9_the_beach",
+      "enter": [
+        { "do": "setWeather", "intensity": 0, "seconds": 0 },
+        { "do": "setObjective", "text": "You survived the shipwreck. Speak with Kael on the beach." },
+        { "do": "say", "line": "s9_kael_intro" }
+      ],
+      "triggers": [
+        { "when": "flagSet", "key": "story_chapter1_finished", "value": true, "then": "story_complete" }
+      ],
+      "exit": [],
+      "next": "story_complete"
+    }
+  ]
+}

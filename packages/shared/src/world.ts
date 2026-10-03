@@ -121,14 +121,14 @@ export function generateWorldMap(
     const rng = new SeededRng(seed);
     const islands: IslandEntity[] = [];
 
-    // 1. Grand Central Fortress Island (Huge stronghold at center)
+    // 1. Grand Ancient Fortress Island (Off-center to keep sea open and avoid ships getting stuck at spawn)
     islands.push({
         id: 0,
         type: "fortress",
         name: "Fortress of the Damned",
-        x: MAP_CENTER_X,
-        z: MAP_CENTER_Z,
-        radius: 175, // significantly larger
+        x: 480,
+        z: -480,
+        radius: 175,
         height: 38,
         seed: rng.intRange(1, 100000),
         hasLootCache: true,
@@ -216,8 +216,8 @@ export function generateWorldMap(
         const rx = MAP_CENTER_X + Math.sin(rockAngle) * rockDist;
         const rz = MAP_CENTER_Z + Math.cos(rockAngle) * rockDist;
 
-        // Ensure not overlapping existing islands
-        let overlaps = false;
+        // Ensure not overlapping existing islands, and preserve a 200m clear start navigable channel around (0,0)
+        let overlaps = (rx * rx + rz * rz < 200 * 200);
         for (const isl of islands) {
             const dx = rx - isl.x;
             const dz = rz - isl.z;

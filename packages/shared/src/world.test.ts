@@ -22,13 +22,13 @@ describe("Deterministic World Generator", () => {
         expect(worldA.islands[1].x).not.toBe(worldB.islands[1].x);
     });
 
-    it("places the central fortress at the world center with loot cache", () => {
+    it("places the grand fortress with loot cache off-center to preserve clear spawn channel", () => {
         const world = generateWorldMap(DEFAULT_MAP_SEED);
         const fortress = world.islands[0];
 
         expect(fortress.type).toBe("fortress");
-        expect(fortress.x).toBe(0);
-        expect(fortress.z).toBe(0);
+        expect(fortress.x).toBe(480);
+        expect(fortress.z).toBe(-480);
         expect(fortress.hasLootCache).toBe(true);
         expect(fortress.radius).toBeGreaterThan(80);
     });
@@ -120,22 +120,22 @@ describe("Deterministic World Generator", () => {
 
     it("calculates terrain elevation correctly for land and sea", () => {
         const world = generateWorldMap(DEFAULT_MAP_SEED);
-        const fortress = world.islands[0]; // center (0, 0), radius 175, height 38
+        const fortress = world.islands[0]; // center (480, -480), radius 175, height 38
 
         // Peak/center elevation
-        const centerElev = getIslandElevation(0, 0, fortress);
+        const centerElev = getIslandElevation(480, -480, fortress);
         expect(centerElev).toBeCloseTo(fortress.height, 0);
 
         // Outside island radius (open sea)
-        const seaElev = getIslandElevation(500, 500, fortress);
+        const seaElev = getIslandElevation(1500, 1500, fortress);
         expect(seaElev).toBe(0.0);
 
         // getTerrainHeight query
-        const queryCenter = getTerrainHeight(0, 0, world);
+        const queryCenter = getTerrainHeight(480, -480, world);
         expect(queryCenter.island?.name).toBe(fortress.name);
         expect(queryCenter.elevation).toBeGreaterThan(20);
 
-        const querySea = getTerrainHeight(1000, 1000, world);
+        const querySea = getTerrainHeight(0, 0, world); // (0,0) is now open navigable sea channel!
         expect(querySea.elevation).toBe(0.0);
     });
 

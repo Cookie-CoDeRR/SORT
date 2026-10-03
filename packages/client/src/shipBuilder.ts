@@ -15,7 +15,12 @@ import {
     Scene, TransformNode, MeshBuilder, StandardMaterial,
     Color3, Mesh,
 } from "@babylonjs/core";
-import { CANNON_COUNT_PER_SIDE, CANNON_LOCAL_X } from "@corsair/shared";
+import {
+    CANNON_COUNT_PER_SIDE,
+    CANNON_COUNT_BOW,
+    CANNON_COUNT_STERN,
+    cannonLocalPos,
+} from "@corsair/shared";
 
 export const MAIN_DECK_Y   = 4.0;
 export const POOP_DECK_Y   = 6.8;
@@ -47,7 +52,7 @@ export function getDeckY(localZ: number): number {
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 export interface CannonHandle {
-    side: "L" | "R";
+    side: "L" | "R" | "F" | "B";
     index: number;
     mount: TransformNode;        // Yaw pivot (turns with mouse/aim)
     barrelPivot: TransformNode;  // Pitch pivot (elevates with mouse/aim)
@@ -550,115 +555,129 @@ export function buildProceduralShip(
         }
     }
 
-    // ── CANNONS (3 per side at Z = [-4.5, 0.5, 5.5], X = +/- 4.3) ───────────────
+    // ── CANNONS (3 per side, 2 bow chasers, 2 stern chasers) ────────────────────
     const cannonHandles: CannonHandle[] = [];
 
-    for (const side of ["L", "R"] as ("L" | "R")[]) {
-        const sx = side === "L" ? -1 : 1;
+    const createCannonMesh = (side: "L" | "R" | "F" | "B", idx: number, basePos: { x: number; y: number; z: number }, defaultYaw: number) => {
+        // 1. Mount Pivot (Yaw rotation, parented to shipRoot)
+        const mount = new TransformNode(`mount_${side}_${idx}`, scene);
+        mount.parent = root;
+        mount.position.set(basePos.x, basePos.y - 0.32, basePos.z);
+        mount.rotation.y = defaultYaw;
 
-        for (let idx = 0; idx < CANNON_COUNT_PER_SIDE; idx++) {
-            const cz = cannonZPositions[idx];
+        // 2. Heavy Oak Carriage Chassis (+Z is forward/outboard towards gunport)
+        const carriage = MeshBuilder.CreateBox(`carriage_${side}_${idx}`,
+            { width: 1.5, height: 0.58, depth: 2.3 }, scene) as Mesh;
+        carriage.parent = mount; carriage.material = mCarriage;
+        carriage.position.set(0, 0, 0);
 
-            // 1. Mount Pivot (Yaw rotation, parented to shipRoot)
-            // Base orientation: L faces -X, R faces +X
-            const mount = new TransformNode(`mount_${side}_${idx}`, scene);
-            mount.parent = root;
-            mount.position.set(sx * CANNON_LOCAL_X, MAIN_DECK_Y + 0.28, cz);
-            mount.rotation.y = side === "L" ? -Math.PI / 2 : Math.PI / 2;
-
-            // 2. Heavy Oak Carriage Chassis (+Z is forward/outboard towards gunport)
-            const carriage = MeshBuilder.CreateBox(`carriage_${side}_${idx}`,
-                { width: 1.5, height: 0.58, depth: 2.3 }, scene) as Mesh;
-            carriage.parent = mount; carriage.material = mCarriage;
-            carriage.position.set(0, 0, 0);
-
-            // 4 Carriage Truck Wheels
-            for (const wx of [-0.82, 0.82]) {
-                for (const wz of [-0.72, 0.72]) {
-                    const w = MeshBuilder.CreateCylinder(`cw_${side}_${idx}_${wx}_${wz}`,
-                        { height: 0.18, diameter: 0.56, tessellation: 10 }, scene);
-                    w.parent = mount; w.material = mCarriage;
-                    w.rotation.z = Math.PI / 2;
-                    w.position.set(wx, -0.16, wz);
-                }
+        // 4 Carriage Truck Wheels
+        for (const wx of [-0.82, 0.82]) {
+            for (const wz of [-0.72, 0.72]) {
+                const w = MeshBuilder.CreateCylinder(`cw_${side}_${idx}_${wx}_${wz}`,
+                    { height: 0.18, diameter: 0.56, tessellation: 10 }, scene);
+                w.parent = mount; w.material = mCarriage;
+                w.rotation.z = Math.PI / 2;
+                w.position.set(wx, -0.16, wz);
             }
-
-            // Rear Aiming Tiller Bar
-            const tiller = MeshBuilder.CreateCylinder(`tiller_${side}_${idx}`,
-                { height: 0.90, diameter: 0.10, tessellation: 8 }, scene);
-            tiller.parent = mount; tiller.material = mWheel;
-            tiller.rotation.z = Math.PI / 2;
-            tiller.position.set(0, 0.30, -1.05);
-
-            // Rear Carriage Aiming Handles
-            for (const gx of [-0.38, 0.38]) {
-                const grip = MeshBuilder.CreateCylinder(`grip_${side}_${idx}_${gx}`,
-                    { height: 0.30, diameter: 0.09, tessellation: 8 }, scene);
-                grip.parent = mount; grip.material = mWheelRim;
-                grip.position.set(gx, 0.44, -1.05);
-            }
-
-            // 3. Elevation Pivot (Pitch trunnions)
-            const barrelPivot = new TransformNode(`bPivot_${side}_${idx}`, scene);
-            barrelPivot.parent = mount;
-            barrelPivot.position.set(0, 0.36, 0.18);
-
-            // 4. Cast Iron Barrel
-            const barrel = MeshBuilder.CreateCylinder(`barrel_${side}_${idx}`,
-                { height: 2.2, diameterTop: 0.38, diameterBottom: 0.52, tessellation: 14 }, scene) as Mesh;
-            barrel.parent = barrelPivot; barrel.material = mCannon;
-            barrel.rotation.x = Math.PI / 2;
-            barrel.position.set(0, 0, 0);
-
-            // Muzzle Ring
-            const muzzle = MeshBuilder.CreateCylinder(`muz_${side}_${idx}`,
-                { height: 0.15, diameter: 0.50, tessellation: 14 }, scene);
-            muzzle.parent = barrel; muzzle.material = mCannon;
-            muzzle.position.set(0, 1.02, 0);
-
-            // Dark Hollow Bore
-            const bore = MeshBuilder.CreateCylinder(`bore_${side}_${idx}`,
-                { height: 0.04, diameter: 0.28, tessellation: 10 }, scene);
-            bore.parent = barrel; bore.material = mat(`boreMat_${side}_${idx}`, scene, 0.02, 0.02, 0.02, 0);
-            bore.position.set(0, 1.09, 0);
-
-            // Breech Ring Band
-            const band = MeshBuilder.CreateCylinder(`band_${side}_${idx}`,
-                { height: 0.16, diameter: 0.56, tessellation: 14 }, scene);
-            band.parent = barrel; band.material = mWheelRim;
-            band.position.set(0, -0.70, 0);
-
-            // Cascabel Button
-            const cascabel = MeshBuilder.CreateSphere(`casc_${side}_${idx}`,
-                { diameter: 0.34, segments: 8 }, scene);
-            cascabel.parent = barrel; cascabel.material = mCannon;
-            cascabel.position.set(0, -1.15, 0);
-
-            // Breech Aiming Grips directly on barrel
-            for (const hx of [-0.36, 0.36]) {
-                const bHandle = MeshBuilder.CreateCylinder(`bHandle_${side}_${idx}_${hx}`,
-                    { height: 0.26, diameter: 0.09, tessellation: 8 }, scene);
-                bHandle.parent = barrel; bHandle.material = mWheel;
-                bHandle.rotation.z = Math.PI / 2;
-                bHandle.position.set(hx, -0.90, 0);
-            }
-
-            // 5. Muzzle Tip TransformNode
-            const muzzleTip = new TransformNode(`muzTip_${side}_${idx}`, scene);
-            muzzleTip.parent = barrel;
-            muzzleTip.position.set(0, 1.25, 0);
-
-            cannonHandles.push({
-                side,
-                index: idx,
-                mount,
-                barrelPivot,
-                barrel,
-                carriage,
-                muzzleTip,
-                recoilZ: 0,
-            });
         }
+
+        // Rear Aiming Tiller Bar
+        const tiller = MeshBuilder.CreateCylinder(`tiller_${side}_${idx}`,
+            { height: 0.90, diameter: 0.10, tessellation: 8 }, scene);
+        tiller.parent = mount; tiller.material = mWheel;
+        tiller.rotation.z = Math.PI / 2;
+        tiller.position.set(0, 0.30, -1.05);
+
+        // Rear Carriage Aiming Handles
+        for (const gx of [-0.38, 0.38]) {
+            const grip = MeshBuilder.CreateCylinder(`grip_${side}_${idx}_${gx}`,
+                { height: 0.30, diameter: 0.09, tessellation: 8 }, scene);
+            grip.parent = mount; grip.material = mWheelRim;
+            grip.position.set(gx, 0.44, -1.05);
+        }
+
+        // 3. Elevation Pivot (Pitch trunnions)
+        const barrelPivot = new TransformNode(`bPivot_${side}_${idx}`, scene);
+        barrelPivot.parent = mount;
+        barrelPivot.position.set(0, 0.36, 0.18);
+
+        // 4. Cast Iron Barrel
+        const barrel = MeshBuilder.CreateCylinder(`barrel_${side}_${idx}`,
+            { height: 2.2, diameterTop: 0.38, diameterBottom: 0.52, tessellation: 14 }, scene) as Mesh;
+        barrel.parent = barrelPivot; barrel.material = mCannon;
+        barrel.rotation.x = Math.PI / 2;
+        barrel.position.set(0, 0, 0);
+
+        // Muzzle Ring
+        const muzzle = MeshBuilder.CreateCylinder(`muz_${side}_${idx}`,
+            { height: 0.15, diameter: 0.50, tessellation: 14 }, scene);
+        muzzle.parent = barrel; muzzle.material = mCannon;
+        muzzle.position.set(0, 1.02, 0);
+
+        // Dark Hollow Bore
+        const bore = MeshBuilder.CreateCylinder(`bore_${side}_${idx}`,
+            { height: 0.04, diameter: 0.28, tessellation: 10 }, scene);
+        bore.parent = barrel; bore.material = mat(`boreMat_${side}_${idx}`, scene, 0.02, 0.02, 0.02, 0);
+        bore.position.set(0, 1.09, 0);
+
+        // Breech Ring Band
+        const band = MeshBuilder.CreateCylinder(`band_${side}_${idx}`,
+            { height: 0.16, diameter: 0.56, tessellation: 14 }, scene);
+        band.parent = barrel; band.material = mWheelRim;
+        band.position.set(0, -0.70, 0);
+
+        // Cascabel Button
+        const cascabel = MeshBuilder.CreateSphere(`casc_${side}_${idx}`,
+            { diameter: 0.34, segments: 8 }, scene);
+        cascabel.parent = barrel; cascabel.material = mCannon;
+        cascabel.position.set(0, -1.15, 0);
+
+        // Breech Aiming Grips directly on barrel
+        for (const hx of [-0.36, 0.36]) {
+            const bHandle = MeshBuilder.CreateCylinder(`bHandle_${side}_${idx}_${hx}`,
+                { height: 0.26, diameter: 0.09, tessellation: 8 }, scene);
+            bHandle.parent = barrel; bHandle.material = mWheel;
+            bHandle.rotation.z = Math.PI / 2;
+            bHandle.position.set(hx, -0.90, 0);
+        }
+
+        // 5. Muzzle Tip TransformNode
+        const muzzleTip = new TransformNode(`muzTip_${side}_${idx}`, scene);
+        muzzleTip.parent = barrel;
+        muzzleTip.position.set(0, 1.25, 0);
+
+        cannonHandles.push({
+            side,
+            index: idx,
+            mount,
+            barrelPivot,
+            barrel,
+            carriage,
+            muzzleTip,
+            recoilZ: 0,
+        });
+    };
+
+    // 1. Broadside Cannons (Port: facing -X, Starboard: facing +X)
+    for (const side of ["L", "R"] as ("L" | "R")[]) {
+        const defaultYaw = side === "L" ? -Math.PI / 2 : Math.PI / 2;
+        for (let idx = 0; idx < CANNON_COUNT_PER_SIDE; idx++) {
+            const lp = cannonLocalPos(side, idx);
+            createCannonMesh(side, idx, lp, defaultYaw);
+        }
+    }
+
+    // 2. Front Bow Chaser Cannons on Forecastle (Facing Forward +Z: defaultYaw = 0)
+    for (let idx = 0; idx < CANNON_COUNT_BOW; idx++) {
+        const lp = cannonLocalPos("F", idx);
+        createCannonMesh("F", idx, lp, 0);
+    }
+
+    // 3. Back Stern Chaser Cannons on Poop Deck (Facing Aft -Z: defaultYaw = Math.PI)
+    for (let idx = 0; idx < CANNON_COUNT_STERN; idx++) {
+        const lp = cannonLocalPos("B", idx);
+        createCannonMesh("B", idx, lp, Math.PI);
     }
 
     // ── CENTRAL AMMO DEPOT (Positioned at X = 0, Z = 0.5) ──────────────────────

@@ -7,4 +7,8 @@ export * from "./damage.js";
 export * from "./player.js";
 export * from "./shipAi.js";
 export * from "./world.js";
+export * from "./weather.js";
+export * from "./npc.js";
+export * from "./kraken.js";
+export * from "./story/index.js";
 

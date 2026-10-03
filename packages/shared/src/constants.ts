@@ -18,11 +18,15 @@ export const CANNON_YAW_ARC        = 70;
 export const CANNON_PITCH_MIN      = -5;
 export const CANNON_PITCH_MAX      = 30;
 export const CANNON_COUNT_PER_SIDE  = 3;
+export const CANNON_COUNT_BOW       = 2;
+export const CANNON_COUNT_STERN     = 2;
 export const CANNONBALL_RADIUS      = 0.18;
 
 // Cannon positions in ship-local space (must match shipBuilder.ts)
 export const CANNON_LOCAL_X         = 4.3;   // outboard offset (for 11m wide hull)
-export const CANNON_LOCAL_Y         = 4.6;   // deck height + carriage height
+export const CANNON_LOCAL_Y         = 4.6;   // deck height + carriage height (main deck)
+export const CANNON_FORE_LOCAL_Y    = 6.8;   // forecastle deck + carriage height
+export const CANNON_POOP_LOCAL_Y    = 7.4;   // poop deck + carriage height
 export const CANNON_SIDE_INSET_X    = 3.2;   // player stand position (inboard)
 
 // ── Per-cannon ammo system ────────────────────────────────────────────────────

@@ -1,0 +1,108 @@
+{
+  "cutscenes": {
+    "cutscene_s0_wake": {
+      "id": "cutscene_s0_wake",
+      "duration": 6.5,
+      "skippable": true,
+      "tracks": [
+        {
+          "type": "camera",
+          "keys": [
+            { "t": 0.0, "pos": [-18, 12, -22], "look": [0, 4, 0], "fov": 65 },
+            { "t": 2.2, "pos": [0, 18, 14], "look": [0, 5, -8], "fov": 55, "ease": "smooth" },
+            { "t": 4.5, "pos": [14, 8, -6], "look": [-2, 5, 0], "fov": 50, "ease": "smooth" },
+            { "t": 6.5, "pos": [0, 5.2, -10], "look": [0, 5.4, -12], "fov": 60, "ease": "inOut" }
+          ]
+        },
+        {
+          "type": "fx",
+          "name": "cinematic_letterbox",
+          "t": 0.0
+        },
+        {
+          "type": "dialogue",
+          "line": "s0_pip_wake_1",
+          "t": 0.8
+        }
+      ]
+    },
+    "cutscene_s3_rogue_wave": {
+      "id": "cutscene_s3_rogue_wave",
+      "duration": 5.0,
+      "skippable": false,
+      "tracks": [
+        {
+          "type": "camera",
+          "keys": [
+            { "t": 0.0, "pos": [-24, 7, 0], "look": [-6, 14, 0], "fov": 70 },
+            { "t": 1.2, "pos": [-12, 16, -10], "look": [0, 4, 0], "fov": 60, "ease": "smooth" },
+            { "t": 2.8, "pos": [8, 12, 16], "look": [0, 4, -4], "fov": 55, "ease": "smooth" },
+            { "t": 5.0, "pos": [0, 6, -6], "look": [0, 4, 2], "fov": 58, "ease": "inOut" }
+          ]
+        },
+        {
+          "type": "fx",
+          "name": "impact_frame",
+          "t": 1.0
+        },
+        {
+          "type": "dialogue",
+          "line": "s3_ismene_shout",
+          "t": 1.5
+        }
+      ]
+    },
+    "cutscene_s4_lightning_reveal": {
+      "id": "cutscene_s4_lightning_reveal",
+      "duration": 6.0,
+      "skippable": true,
+      "tracks": [
+        {
+          "type": "camera",
+          "keys": [
+            { "t": 0.0, "pos": [-14, 8, -20], "look": [0, 5, 5], "fov": 60 },
+            { "t": 2.0, "pos": [12, 9, -15], "look": [0, 5, 10], "fov": 55, "ease": "smooth" },
+            { "t": 4.0, "pos": [0, 8.5, -12], "look": [0, 7, 60], "fov": 50, "ease": "smooth" },
+            { "t": 6.0, "pos": [0, 6.2, -10], "look": [0, 5.5, 30], "fov": 55, "ease": "inOut" }
+          ]
+        },
+        {
+          "type": "fx",
+          "name": "impact_frame",
+          "t": 0.4
+        },
+        {
+          "type": "dialogue",
+          "line": "s4_pip_light",
+          "t": 1.0
+        }
+      ]
+    },
+    "cutscene_s6_kraken_rising": {
+      "id": "cutscene_s6_kraken_rising",
+      "duration": 8.0,
+      "skippable": false,
+      "tracks": [
+        {
+          "type": "camera",
+          "keys": [
+            { "t": 0.0, "pos": [0, 32, 0], "look": [0, 0, 0], "fov": 75 },
+            { "t": 2.5, "pos": [-32, 14, 18], "look": [0, 6, 0], "fov": 60, "ease": "smooth" },
+            { "t": 5.0, "pos": [28, 8, -22], "look": [0, 8, 0], "fov": 55, "ease": "smooth" },
+            { "t": 8.0, "pos": [0, 10, -14], "look": [0, 12, 15], "fov": 58, "ease": "inOut" }
+          ]
+        },
+        {
+          "type": "fx",
+          "name": "impact_frame",
+          "t": 2.5
+        },
+        {
+          "type": "dialogue",
+          "line": "s6_vance_all_hands",
+          "t": 3.5
+        }
+      ]
+    }
+  }
+}

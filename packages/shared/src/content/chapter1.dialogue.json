@@ -1,0 +1,164 @@
+{
+  "chapterId": "ch1_widows_lantern",
+  "lines": {
+    "s0_pip_wake_1": {
+      "id": "s0_pip_wake_1",
+      "speaker": "PIP",
+      "text": "Wake up. Please. Wake up! The captain wants all hands!",
+      "duration": 3.5,
+      "isBark": false
+    },
+    "s1_vance_order_1": {
+      "id": "s1_vance_order_1",
+      "speaker": "VANCE",
+      "text": "You. Take the wheel! Bow into the swells, never side-on!",
+      "duration": 4.0,
+      "isBark": true
+    },
+    "s1_vance_good": {
+      "id": "s1_vance_good",
+      "speaker": "VANCE",
+      "text": "Good. Keep her steady. Hold this heading.",
+      "duration": 3.0,
+      "isBark": true
+    },
+    "s2_tobin_intro": {
+      "id": "s2_tobin_intro",
+      "speaker": "TOBIN",
+      "text": "Come here! Hands on the iron. Aim high on the roll and clear the channel!",
+      "duration": 4.5,
+      "isBark": true
+    },
+    "s2_tobin_done": {
+      "id": "s2_tobin_done",
+      "speaker": "TOBIN",
+      "text": "Not bad at all! Thirty years I've fired these, and you've got the touch.",
+      "duration": 4.0,
+      "isBark": true
+    },
+    "s3_ismene_shout": {
+      "id": "s3_ismene_shout",
+      "speaker": "ISMENE",
+      "text": "Port side breach! We're taking on water! Grab planks and bail!",
+      "duration": 4.0,
+      "isBark": false
+    },
+    "s4_pip_light": {
+      "id": "s4_pip_light",
+      "speaker": "PIP",
+      "text": "There! A light through the storm! A lighthouse ahead!",
+      "duration": 3.5,
+      "isBark": false
+    },
+    "s4_vance_conclusion": {
+      "id": "s4_vance_conclusion",
+      "speaker": "VANCE",
+      "text": "Whatever that light is, the hull won't survive till dawn out here. Steady as she goes.",
+      "duration": 4.5,
+      "isBark": true
+    },
+    "s5_pip_silence": {
+      "id": "s5_pip_silence",
+      "speaker": "PIP",
+      "text": "It stopped... the rain, the wind. Why is the sea so quiet?",
+      "duration": 4.0,
+      "isBark": true
+    },
+    "s5_tobin_compass": {
+      "id": "s5_tobin_compass",
+      "speaker": "TOBIN",
+      "text": "Here, Pip. Take my compass. For luck.",
+      "duration": 3.5,
+      "isBark": false
+    },
+    "s6_vance_all_hands": {
+      "id": "s6_vance_all_hands",
+      "speaker": "VANCE",
+      "text": "All hands... battle stations.",
+      "duration": 3.0,
+      "isBark": false
+    },
+    "s7b_tobin_line": {
+      "id": "s7b_tobin_line",
+      "speaker": "TOBIN",
+      "text": "The sheet line! If I cut it, she rights herself! Keep her steady!",
+      "duration": 4.0,
+      "isBark": false
+    },
+    "s7d_ismene_forgive": {
+      "id": "s7d_ismene_forgive",
+      "speaker": "ISMENE",
+      "text": "It follows the light! I told them it was a map... it was a leash. Forgive me!",
+      "duration": 4.5,
+      "isBark": false
+    },
+    "s7e_vance_fire": {
+      "id": "s7e_vance_fire",
+      "speaker": "VANCE",
+      "text": "I have the wheel! For Tobin! For Roque! Give them everything!",
+      "duration": 4.0,
+      "isBark": true
+    },
+    "s8_vance_lash": {
+      "id": "s8_vance_lash",
+      "speaker": "VANCE",
+      "text": "Lash yourselves! All of you! Pip, to the mast!",
+      "duration": 3.5,
+      "isBark": false
+    },
+    "s9_kael_intro": {
+      "id": "s9_kael_intro",
+      "speaker": "KAEL",
+      "text": "Easy. Easy. You're alive. I found you on the rocks... just you. Who told you to sail toward the light?",
+      "duration": 5.0,
+      "isBark": false,
+      "choices": [
+        { "id": "c1", "label": "The captain.", "flagKey": "blamed", "flagValue": "vance", "next": "s9_kael_q2" },
+        { "id": "c2", "label": "Nobody. We chose.", "flagKey": "blamed", "flagValue": "self", "next": "s9_kael_q2" },
+        { "id": "c3", "label": "The navigator warned us.", "flagKey": "blamed", "flagValue": "ismene", "next": "s9_kael_q2" }
+      ]
+    },
+    "s9_kael_q2": {
+      "id": "s9_kael_q2",
+      "speaker": "KAEL",
+      "text": "What did you see in the water before the wave broke?",
+      "duration": 4.0,
+      "isBark": false,
+      "choices": [
+        { "id": "c4", "label": "A creature.", "flagKey": "saw", "flagValue": "kraken", "next": "s9_kael_q3" },
+        { "id": "c5", "label": "A face.", "flagKey": "saw", "flagValue": "face", "next": "s9_kael_q3" },
+        { "id": "c6", "label": "I don't remember.", "flagKey": "saw", "flagValue": "nothing", "next": "s9_kael_q3" }
+      ]
+    },
+    "s9_kael_q3": {
+      "id": "s9_kael_q3",
+      "speaker": "KAEL",
+      "text": "Did your ship carry anything it shouldn't have?",
+      "duration": 3.5,
+      "isBark": false,
+      "choices": [
+        { "id": "c7", "label": "A sealed chart case.", "flagKey": "mentioned_case", "flagValue": true, "next": "s9_kael_q4" },
+        { "id": "c8", "label": "Nothing.", "flagKey": "mentioned_case", "flagValue": false, "next": "s9_kael_q4" }
+      ]
+    },
+    "s9_kael_q4": {
+      "id": "s9_kael_q4",
+      "speaker": "KAEL",
+      "text": "Do you trust me?",
+      "duration": 3.0,
+      "isBark": false,
+      "choices": [
+        { "id": "c9", "label": "Yes.", "flagKey": "trust_kael", "flagValue": 1, "next": "s9_kael_finish" },
+        { "id": "c10", "label": "No.", "flagKey": "trust_kael", "flagValue": -1, "next": "s9_kael_finish" },
+        { "id": "c11", "label": "Not yet.", "flagKey": "trust_kael", "flagValue": 0, "next": "s9_kael_finish" }
+      ]
+    },
+    "s9_kael_finish": {
+      "id": "s9_kael_finish",
+      "speaker": "KAEL",
+      "text": "Then it hasn't finished... the lantern has called something else.",
+      "duration": 4.5,
+      "isBark": false
+    }
+  }
+}

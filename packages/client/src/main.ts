@@ -21,17 +21,17 @@ import {
     eatFood, takeFoodFromBarrel, storeFoodInBarrel,
     getHotbarItemType, PlayerHotbarState, ShipSuppliesState,
     CANNONBALL_PLAYER_DAMAGE, CANNONBALL_SPLASH_RADIUS,
-    stepCirclePatrolAi, AI_DEFAULT_PATROL_RADIUS, AI_PATROL_CENTER_X, AI_PATROL_CENTER_Z,
-    generateWorldMap, resolveShipIslandCollisions, DEFAULT_MAP_SEED, WorldMap,
+    stepCirclePatrolAi,
+    generateWorldMap, DEFAULT_MAP_SEED, WorldMap,
     getTerrainHeight, SHIP_LADDER_X, SHIP_LADDER_Z,
     LADDER_INTERACT_RADIUS, SWIM_SPEED, SPRINT_SWIM_SPEED, WALK_SPEED, SPRINT_RUN_SPEED,
-    WATERLINE_Y, AI_COMBAT_ATTACK_RANGE, stepPlayerStamina,
+    WATERLINE_Y, AI_COMBAT_ATTACK_RANGE, stepPlayerStamina, CANNONBALL_RADIUS,
+    SHIP_COLLISION_RADIUS,
 } from "@corsair/shared";
 import {
     buildProceduralShip, getDeckY, ShipHandles,
     POOP_DECK_Y, MAIN_DECK_Y, buildPirateCharacter,
 } from "./shipBuilder.js";
-import { buildProceduralIsland } from "./islandBuilder.js";
 
 import {
     resumeAudio, toggleAudioMute,
@@ -44,157 +44,180 @@ import {
     playLadderClimb, playWaterJump,
 } from "./soundEngine.js";
 
+import { DialogueUI } from "./story/DialogueUI.js";
+import { ObjectiveUI } from "./story/ObjectiveUI.js";
+import { StoryDebugPanel } from "./story/DebugPanel.js";
+import { CutscenePlayer } from "./story/CutscenePlayer.js";
+import { WeatherRenderer } from "./render/Weather.js";
+import { NpcView } from "./render/NpcView.js";
+import { KrakenView } from "./render/KrakenView.js";
+import {
+    createDefaultWeatherState, stepWeather,
+    createDefaultNpcCrew, stepNpcCrew,
+    createDefaultKrakenBoss, stepKrakenBoss, testCannonballTentacleHit,
+    WeatherState, KrakenBossState
+} from "@corsair/shared";
+import { SceneryBuilder } from "./render/SceneryBuilder.js";
+import chapterBeatsData from "@corsair/shared/src/content/chapter1.beats.json" with { type: "json" };
+import chapterDialogueData from "@corsair/shared/src/content/chapter1.dialogue.json" with { type: "json" };
+import chapterCutscenesData from "@corsair/shared/src/content/chapter1.cutscenes.json" with { type: "json" };
+import chapterLevelData from "@corsair/shared/src/content/chapter1.level.json" with { type: "json" };
+import { getLevelColliders, ChapterLevel, ChapterBeats, ChapterCutscenes, ChapterDialogue } from "@corsair/shared";
+
 
 // ─── CSS ────────────────────────────────────────────────────────────────────
 document.head.insertAdjacentHTML("beforeend", `
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Orbitron:wght@500;700;900&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Pirata+One&family=IM+Fell+English:ital@0;1&display=swap');
   *{box-sizing:border-box;margin:0;padding:0}
-  body{overflow:hidden;background:#000;font-family:'Rajdhani',sans-serif;user-select:none}
+  body{overflow:hidden;background:#06080b;font-family:'Cinzel',serif;user-select:none}
   #renderCanvas{width:100vw;height:100vh;display:block;outline:none}
 
   /* Crosshairs */
   #crosshair{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:22px;height:22px;pointer-events:none;opacity:1;transition:opacity .2s}
   #crosshair.hidden{opacity:0}
-  #crosshair::before,#crosshair::after{content:'';position:absolute;background:rgba(255,255,255,0.75);border-radius:2px}
+  #crosshair::before,#crosshair::after{content:'';position:absolute;background:rgba(212,175,55,0.85);border-radius:1px}
   #crosshair::before{width:2px;height:100%;left:50%;transform:translateX(-50%)}
   #crosshair::after{height:2px;width:100%;top:50%;transform:translateY(-50%)}
 
   #cannon-xhair{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none;opacity:0;transition:opacity .2s;display:flex;align-items:center;justify-content:center}
   #cannon-xhair.visible{opacity:1}
-  .cxh-ring{width:52px;height:52px;border:2px solid rgba(245,158,11,0.85);border-radius:50%;position:relative;box-shadow:0 0 16px rgba(245,158,11,0.3),inset 0 0 12px rgba(245,158,11,0.2)}
-  .cxh-ring::before,.cxh-ring::after{content:'';position:absolute;background:rgba(245,158,11,0.9);border-radius:1px}
+  .cxh-ring{width:56px;height:56px;border:2px solid #c5a059;border-radius:50%;position:relative;box-shadow:0 0 16px rgba(0,0,0,0.8),inset 0 0 10px rgba(197,160,89,0.3)}
+  .cxh-ring::before,.cxh-ring::after{content:'';position:absolute;background:#d4af37;border-radius:1px}
   .cxh-ring::before{width:2px;height:24px;left:50%;top:50%;transform:translate(-50%,-50%)}
   .cxh-ring::after{height:2px;width:24px;top:50%;left:50%;transform:translate(-50%,-50%)}
-  .cxh-dot{position:absolute;width:6px;height:6px;background:#fbbf24;border-radius:50%;top:50%;left:50%;transform:translate(-50%,-50%);box-shadow:0 0 8px #fbbf24}
+  .cxh-dot{position:absolute;width:6px;height:6px;background:#e5c158;border-radius:50%;top:50%;left:50%;transform:translate(-50%,-50%);box-shadow:0 0 8px #d4af37}
 
   /* Top bar */
-  #topbar{position:absolute;top:0;left:0;right:0;height:54px;background:linear-gradient(180deg,rgba(10,14,22,0.85) 0%,rgba(10,14,22,0) 100%);display:flex;align-items:center;justify-content:center;pointer-events:none;gap:45px;padding:0 24px}
+  #topbar{position:absolute;top:0;left:0;right:0;height:54px;background:linear-gradient(180deg,rgba(16,12,8,0.95) 0%,rgba(16,12,8,0) 100%);display:flex;align-items:center;justify-content:center;pointer-events:none;gap:45px;padding:0 24px}
   .topstat{display:flex;flex-direction:column;align-items:center}
-  .tslabel{font-family:'Orbitron',sans-serif;font-size:8px;letter-spacing:3px;color:rgba(255,255,255,.4);text-transform:uppercase}
-  .tsval{font-family:'Orbitron',sans-serif;font-size:15px;font-weight:700;color:#fff;text-shadow:0 0 12px rgba(56,189,248,.7)}
-  #gtitle{font-family:'Orbitron',sans-serif;font-size:12px;font-weight:900;letter-spacing:6px;color:rgba(255,255,255,.3);text-transform:uppercase;margin:0 20px}
+  .tslabel{font-family:'Cinzel',serif;font-size:9px;letter-spacing:3px;color:rgba(197,160,89,0.65);text-transform:uppercase}
+  .tsval{font-family:'Cinzel',serif;font-size:14px;font-weight:700;color:#f4ebd9;text-shadow:0 2px 6px rgba(0,0,0,0.9)}
+  #gtitle{font-family:'Pirata One',cursive;font-size:22px;letter-spacing:4px;color:#d4af37;text-shadow:0 2px 8px rgba(0,0,0,0.95);margin:0 20px}
 
   /* Speedometer */
   #speedo{position:absolute;bottom:54px;left:24px;display:flex;align-items:flex-end;gap:6px;pointer-events:none}
-  #speedo-val{font-family:'Orbitron',sans-serif;font-size:32px;font-weight:900;color:#fff;line-height:1;text-shadow:0 0 20px rgba(56,189,248,.6)}
-  #speedo-unit{font-family:'Rajdhani',sans-serif;font-size:13px;font-weight:700;color:rgba(255,255,255,.5);margin-bottom:4px;letter-spacing:1px}
+  #speedo-val{font-family:'Pirata One',cursive;font-size:38px;font-weight:700;color:#f4ebd9;line-height:1;text-shadow:0 2px 10px rgba(0,0,0,0.9)}
+  #speedo-unit{font-family:'Cinzel',serif;font-size:12px;font-weight:700;color:#c5a059;margin-bottom:6px;letter-spacing:1px}
   #spbar-wrap{position:absolute;bottom:42px;left:24px;width:125px}
-  #spbar-bg{height:4px;background:rgba(255,255,255,.12);border-radius:2px;overflow:hidden}
-  #spbar-fill{height:100%;border-radius:2px;background:linear-gradient(90deg,#38bdf8,#34d399);transition:width .3s cubic-bezier(.4,0,.2,1);width:0%}
+  #spbar-bg{height:5px;background:rgba(28,20,14,0.85);border:1px solid rgba(197,160,89,0.4);border-radius:2px;overflow:hidden}
+  #spbar-fill{height:100%;border-radius:2px;background:linear-gradient(90deg,#9a3412,#d4af37);transition:width .3s cubic-bezier(.4,0,.2,1);width:0%}
 
   /* Compass */
   #compass-wrap{position:absolute;bottom:42px;left:50%;transform:translateX(-50%);pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:4px}
-  #compass-dial{width:180px;height:28px;border-radius:6px;overflow:hidden;position:relative;background:rgba(12,18,28,0.75);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.12);box-shadow:0 4px 16px rgba(0,0,0,0.5)}
-  #compass-tape{position:absolute;white-space:nowrap;top:50%;transform:translateY(-50%);font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:4px;color:rgba(255,255,255,.55)}
-  #compass-marker{position:absolute;left:50%;top:0;bottom:0;width:2px;background:#38bdf8;transform:translateX(-50%);box-shadow:0 0 6px #38bdf8}
-  #hdg-val{font-family:'Orbitron',sans-serif;font-size:10px;color:rgba(255,255,255,.45);letter-spacing:2px}
+  #compass-dial{width:240px;height:34px;border-radius:4px;overflow:hidden;position:relative;background:linear-gradient(180deg,rgba(26,20,15,0.95) 0%,rgba(14,10,7,0.95) 100%);border:1.5px solid #c5a059;box-shadow:0 4px 20px rgba(0,0,0,0.85),inset 0 0 10px rgba(0,0,0,0.7)}
+  #compass-tape{position:absolute;white-space:nowrap;top:50%;transform:translateY(-50%);font-family:'Cinzel',serif;font-size:11px;font-weight:700;letter-spacing:4px;color:#d4af37}
+  #compass-marker{position:absolute;left:50%;top:0;bottom:0;width:2px;background:#e5c158;transform:translateX(-50%);box-shadow:0 0 6px #d4af37}
+  #compass-waypoint-pip{position:absolute;top:2px;width:8px;height:8px;background:#fbbf24;border-radius:50%;transform:translateX(-50%);box-shadow:0 0 8px #fbbf24;display:none}
+  #compass-sub{display:flex;gap:14px;align-items:center}
+  #hdg-val{font-family:'Cinzel',serif;font-size:10px;font-weight:700;color:#c5a059;letter-spacing:2px}
+  #wp-dist-val{font-family:'Cinzel',serif;font-size:10px;color:#f4ebd9;letter-spacing:1px;font-weight:700}
 
   /* Sail */
   #sail-wrap{position:absolute;bottom:42px;right:24px;display:flex;align-items:center;gap:10px;pointer-events:none}
-  #sail-label{font-family:'Orbitron',sans-serif;font-size:8px;letter-spacing:2px;color:rgba(255,255,255,.4);text-align:right}
+  #sail-label{font-family:'Cinzel',serif;font-size:9px;font-weight:700;letter-spacing:2px;color:#c5a059;text-align:right}
   #sail-bars{display:flex;align-items:flex-end;gap:3px;height:36px}
-  .sail-seg{width:12px;border-radius:2px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.1);transition:background .3s,border-color .3s}
-  .sail-seg.active{background:#38bdf8;border-color:#38bdf8;box-shadow:0 0 10px rgba(56,189,248,.6)}
+  .sail-seg{width:12px;border-radius:2px;background:rgba(28,20,14,0.6);border:1px solid rgba(197,160,89,0.3);transition:background .3s,border-color .3s}
+  .sail-seg.active{background:linear-gradient(180deg,#d4af37,#92400e);border-color:#e5c158;box-shadow:0 0 10px rgba(212,175,55,0.4)}
 
   /* Central Ammo Barrel HUD */
-  #barrel-hud{position:absolute;top:64px;right:24px;pointer-events:none;background:rgba(15,20,30,0.8);backdrop-filter:blur(8px);border:1px solid rgba(245,158,11,0.3);border-radius:8px;padding:8px 14px;display:flex;align-items:center;gap:12px;box-shadow:0 4px 16px rgba(0,0,0,0.4)}
+  #barrel-hud{position:absolute;top:64px;right:24px;pointer-events:none;background:linear-gradient(180deg,rgba(26,20,15,0.92) 0%,rgba(14,10,7,0.95) 100%);border:1.5px solid #c5a059;border-radius:4px;padding:8px 14px;display:flex;align-items:center;gap:12px;box-shadow:0 4px 20px rgba(0,0,0,0.8)}
   .bh-icon{font-size:22px;line-height:1}
   .bh-info{display:flex;flex-direction:column}
-  .bh-title{font-family:'Orbitron',sans-serif;font-size:8px;letter-spacing:2px;color:rgba(245,158,11,0.9);text-transform:uppercase}
-  .bh-val{font-family:'Orbitron',sans-serif;font-size:15px;font-weight:700;color:#fff}
-  .bh-sub{font-size:10px;color:rgba(255,255,255,0.45)}
+  .bh-title{font-family:'Cinzel',serif;font-size:9px;font-weight:700;letter-spacing:2px;color:#c5a059;text-transform:uppercase}
+  .bh-val{font-family:'Cinzel',serif;font-size:14px;font-weight:700;color:#f4ebd9}
+  .bh-sub{font-size:10px;color:rgba(244,235,217,0.6)}
 
   /* Player Carried Ammo HUD */
-  #player-ammo{position:absolute;bottom:94px;left:24px;pointer-events:none;background:rgba(15,20,30,0.8);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:8px 12px;display:flex;flex-direction:column;gap:6px}
+  #player-ammo{position:absolute;bottom:94px;left:24px;pointer-events:none;background:linear-gradient(180deg,rgba(26,20,15,0.92) 0%,rgba(14,10,7,0.95) 100%);border:1.5px solid #c5a059;border-radius:4px;padding:8px 12px;display:flex;flex-direction:column;gap:6px}
   #pa-header{display:flex;justify-content:space-between;align-items:center}
-  #pa-label{font-family:'Orbitron',sans-serif;font-size:8px;letter-spacing:2px;color:rgba(245,158,11,0.9);text-transform:uppercase}
-  #pa-total{font-family:'Orbitron',sans-serif;font-size:9px;color:rgba(255,255,255,0.5)}
+  #pa-label{font-family:'Cinzel',serif;font-size:9px;font-weight:700;letter-spacing:2px;color:#c5a059;text-transform:uppercase}
+  #pa-total{font-family:'Cinzel',serif;font-size:10px;color:rgba(244,235,217,0.6)}
   #pa-slots{display:flex;gap:8px}
-  .pa-slot{border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.35);border-radius:5px;padding:4px 6px;display:flex;flex-direction:column;align-items:center;gap:3px;min-width:68px}
-  .pa-slot-title{font-family:'Orbitron',sans-serif;font-size:7px;color:rgba(255,255,255,0.4);letter-spacing:1px}
-  .pa-slot-count{font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;color:#fff}
+  .pa-slot{border:1px solid rgba(197,160,89,0.3);background:rgba(10,8,6,0.6);border-radius:3px;padding:4px 6px;display:flex;flex-direction:column;align-items:center;gap:3px;min-width:68px}
+  .pa-slot-title{font-family:'Cinzel',serif;font-size:8px;color:#c5a059;letter-spacing:1px}
+  .pa-slot-count{font-family:'Cinzel',serif;font-size:11px;font-weight:700;color:#f4ebd9}
   .pa-pips{display:flex;gap:2px;flex-wrap:wrap;width:48px;justify-content:center}
-  .pa-pip{width:4px;height:4px;border-radius:50%;background:#f59e0b;box-shadow:0 0 3px #f59e0b}
-  .pa-pip.empty{background:rgba(255,255,255,0.12);box-shadow:none}
+  .pa-pip{width:4px;height:4px;border-radius:50%;background:#d4af37;box-shadow:0 0 3px #d4af37}
+  .pa-pip.empty{background:rgba(244,235,217,0.15);box-shadow:none}
 
   /* Cannon Station HUD (Overlay while manning) */
   #cannon-station-hud{position:absolute;bottom:80px;left:50%;transform:translateX(-50%);pointer-events:none;opacity:0;transition:opacity .25s;display:flex;flex-direction:column;align-items:center;gap:8px;min-width:320px}
   #cannon-station-hud.visible{opacity:1}
-  .csh-header{background:rgba(12,18,28,0.85);backdrop-filter:blur(8px);border:1px solid rgba(245,158,11,0.4);border-radius:20px;padding:4px 16px;display:flex;align-items:center;gap:10px}
-  .csh-badge{font-family:'Orbitron',sans-serif;font-size:9px;font-weight:900;letter-spacing:2px;color:#f59e0b;text-transform:uppercase}
-  .csh-level{font-family:'Orbitron',sans-serif;font-size:9px;font-weight:700;color:#38bdf8;letter-spacing:1px}
-  .csh-body{background:rgba(12,18,28,0.85);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:8px 18px;display:flex;flex-direction:column;align-items:center;gap:6px;box-shadow:0 4px 20px rgba(0,0,0,0.5)}
-  .csh-ammo-label{font-family:'Orbitron',sans-serif;font-size:8px;letter-spacing:2px;color:rgba(255,255,255,0.6);text-transform:uppercase}
+  .csh-header{background:linear-gradient(180deg,rgba(26,20,15,0.95) 0%,rgba(14,10,7,0.96) 100%);border:1.5px solid #c5a059;border-radius:4px;padding:4px 18px;display:flex;align-items:center;gap:12px}
+  .csh-badge{font-family:'Pirata One',cursive;font-size:14px;letter-spacing:2px;color:#d4af37;text-transform:uppercase}
+  .csh-level{font-family:'Cinzel',serif;font-size:10px;font-weight:700;color:#e5c158;letter-spacing:1px}
+  .csh-body{background:linear-gradient(180deg,rgba(24,18,14,0.96) 0%,rgba(14,10,7,0.98) 100%);border:1.5px solid #c5a059;border-radius:4px;padding:8px 20px;display:flex;flex-direction:column;align-items:center;gap:6px;box-shadow:0 6px 25px rgba(0,0,0,0.8)}
+  .csh-ammo-label{font-family:'Cinzel',serif;font-size:9px;font-weight:700;letter-spacing:2px;color:#c5a059;text-transform:uppercase}
   .csh-ammo-row{display:flex;gap:4px;align-items:center}
-  .csh-ammo-pip{width:8px;height:14px;border-radius:2px;background:linear-gradient(180deg,#fbbf24,#d97706);box-shadow:0 0 6px rgba(245,158,11,0.6);transition:all .15s}
-  .csh-ammo-pip.empty{background:rgba(255,255,255,0.08);box-shadow:none}
-  .csh-status{font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;letter-spacing:2px;color:#fff}
-  .csh-status.ready{color:#34d399;text-shadow:0 0 10px rgba(52,211,153,0.5)}
-  .csh-status.reloading{color:#f59e0b;text-shadow:0 0 10px rgba(245,158,11,0.5)}
+  .csh-ammo-pip{width:8px;height:14px;border-radius:2px;background:linear-gradient(180deg,#fbbf24,#92400e);box-shadow:0 0 4px rgba(212,175,55,0.5);transition:all .15s}
+  .csh-ammo-pip.empty{background:rgba(244,235,217,0.12);box-shadow:none}
+  .csh-status{font-family:'Cinzel',serif;font-size:12px;font-weight:700;letter-spacing:2px;color:#f4ebd9}
+  .csh-status.ready{color:#4ade80;text-shadow:0 0 10px rgba(74,222,128,0.5)}
+  .csh-status.reloading{color:#fbbf24;text-shadow:0 0 10px rgba(251,191,36,0.5)}
   .csh-status.empty{color:#ef4444;text-shadow:0 0 10px rgba(239,68,68,0.5)}
-  .csh-rl-bar{width:160px;height:4px;background:rgba(255,255,255,0.1);border-radius:2px;overflow:hidden;margin-top:2px}
-  .csh-rl-fill{height:100%;background:linear-gradient(90deg,#f59e0b,#fbbf24);width:0%;transition:width .05s linear}
-  .csh-hints{font-size:11px;color:rgba(255,255,255,0.45);letter-spacing:1px}
+  .csh-rl-bar{width:160px;height:5px;background:rgba(28,20,14,0.85);border:1px solid rgba(197,160,89,0.3);border-radius:2px;overflow:hidden;margin-top:2px}
+  .csh-rl-fill{height:100%;background:linear-gradient(90deg,#92400e,#d4af37);width:0%;transition:width .05s linear}
+  .csh-hints{font-size:11px;color:rgba(244,235,217,0.55);letter-spacing:1px}
 
   /* Interaction Prompt Toast */
-  #interact-prompt{position:absolute;bottom:24px;left:50%;transform:translateX(-50%) translateY(10px);pointer-events:none;opacity:0;transition:opacity .25s,transform .25s;display:flex;align-items:center;gap:10px;background:rgba(12,18,28,0.85);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.18);border-radius:30px;padding:6px 18px;box-shadow:0 4px 20px rgba(0,0,0,0.5)}
+  #interact-prompt{position:absolute;bottom:24px;left:50%;transform:translateX(-50%) translateY(10px);pointer-events:none;opacity:0;transition:opacity .25s,transform .25s;display:flex;align-items:center;gap:10px;background:linear-gradient(180deg,rgba(26,20,15,0.95) 0%,rgba(14,10,7,0.98) 100%);border:1.5px solid #c5a059;border-radius:4px;padding:6px 20px;box-shadow:0 4px 20px rgba(0,0,0,0.8)}
   #interact-prompt.visible{opacity:1;transform:translateX(-50%) translateY(0)}
-  .ip-key{width:26px;height:26px;border-radius:6px;border:1px solid rgba(255,255,255,0.4);background:rgba(255,255,255,0.12);font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 0 8px rgba(255,255,255,0.15)}
-  .ip-text{font-size:13px;font-weight:600;color:rgba(255,255,255,0.9);letter-spacing:1.5px;text-transform:uppercase}
+  .ip-key{width:26px;height:26px;border-radius:3px;border:1px solid #c5a059;background:rgba(40,28,20,0.8);font-family:'Cinzel',serif;font-size:12px;font-weight:900;color:#d4af37;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.6)}
+  .ip-text{font-size:13px;font-weight:700;color:#f4ebd9;letter-spacing:1.5px;text-transform:uppercase}
 
   /* Level Up Banner */
-  #levelup-banner{position:absolute;top:75px;left:50%;transform:translateX(-50%) scale(0.9);pointer-events:none;opacity:0;transition:all .35s cubic-bezier(.34,1.56,.64,1);background:linear-gradient(135deg,rgba(245,158,11,0.9),rgba(217,119,6,0.95));padding:10px 24px;border-radius:30px;box-shadow:0 0 30px rgba(245,158,11,0.8);display:flex;align-items:center;gap:10px;z-index:99}
+  #levelup-banner{position:absolute;top:75px;left:50%;transform:translateX(-50%) scale(0.9);pointer-events:none;opacity:0;transition:all .35s cubic-bezier(.34,1.56,.64,1);background:linear-gradient(180deg,rgba(36,26,18,0.98) 0%,rgba(16,12,8,0.98) 100%);border:2px solid #d4af37;padding:10px 28px;border-radius:4px;box-shadow:0 0 35px rgba(212,175,55,0.6);display:flex;align-items:center;gap:12px;z-index:99}
   #levelup-banner.show{opacity:1;transform:translateX(-50%) scale(1)}
-  .lub-text{font-family:'Orbitron',sans-serif;font-size:13px;font-weight:900;color:#fff;letter-spacing:2px;text-transform:uppercase;text-shadow:0 2px 8px rgba(0,0,0,0.4)}
+  .lub-text{font-family:'Pirata One',cursive;font-size:18px;color:#d4af37;letter-spacing:2px;text-transform:uppercase;text-shadow:0 2px 8px rgba(0,0,0,0.8)}
 
   /* Notification Toast */
-  #game-toast{position:absolute;top:118px;left:50%;transform:translateX(-50%) translateY(-10px);pointer-events:none;opacity:0;transition:all .25s cubic-bezier(.34,1.56,.64,1);background:rgba(12,18,28,0.92);backdrop-filter:blur(10px);border:1px solid rgba(245,158,11,0.6);border-radius:24px;padding:8px 22px;font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;color:#fff;letter-spacing:1px;box-shadow:0 6px 24px rgba(0,0,0,0.6);z-index:90}
+  #game-toast{position:absolute;top:118px;left:50%;transform:translateX(-50%) translateY(-10px);pointer-events:none;opacity:0;transition:all .25s cubic-bezier(.34,1.56,.64,1);background:linear-gradient(180deg,rgba(26,20,15,0.96) 0%,rgba(14,10,7,0.98) 100%);border:1.5px solid #c5a059;border-radius:4px;padding:8px 24px;font-family:'Cinzel',serif;font-size:12px;font-weight:700;color:#f4ebd9;letter-spacing:1px;box-shadow:0 6px 25px rgba(0,0,0,0.8);z-index:90}
   #game-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
-  #game-toast.warning{border-color:#ef4444;color:#fca5a5}
-  #game-toast.success{border-color:#34d399;color:#6ee7b7}
+  #game-toast.warning{border-color:#b91c1c;color:#fecaca}
+  #game-toast.success{border-color:#15803d;color:#bbf7d0}
 
   /* Station overlays */
   .soverlay{position:absolute;top:60px;left:50%;transform:translateX(-50%);pointer-events:none;opacity:0;transition:opacity .3s;display:flex;flex-direction:column;align-items:center;gap:4px}
   .soverlay.visible{opacity:1}
-  .so-title{font-family:'Orbitron',sans-serif;font-size:11px;letter-spacing:4px;text-transform:uppercase}
-  .so-hint{font-family:'Rajdhani',sans-serif;font-size:12px;color:rgba(255,255,255,.45);letter-spacing:1px}
-  #helm-ov .so-title{color:rgba(245,158,11,.95)}
+  .so-title{font-family:'Cinzel',serif;font-size:13px;font-weight:900;letter-spacing:4px;text-transform:uppercase}
+  .so-hint{font-family:'Cinzel',serif;font-size:11px;color:rgba(244,235,217,0.6);letter-spacing:1px}
+  #helm-ov .so-title{color:#d4af37}
 
   /* Hit flash */
   #hflash{position:absolute;inset:0;pointer-events:none;background:rgba(255,60,0,0);transition:background .05s}
-  #fps{position:absolute;top:8px;right:14px;font-family:'Rajdhani',sans-serif;font-size:12px;color:rgba(255,255,255,.25);pointer-events:none}
-  #audio-btn{position:absolute;top:8px;right:64px;z-index:90;cursor:pointer;background:rgba(12,18,28,0.85);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.2);border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:0 4px 12px rgba(0,0,0,0.5);transition:transform .1s,border-color .15s}
-  #audio-btn:hover{transform:scale(1.1);border-color:#38bdf8}
+  #fps{position:absolute;top:8px;right:14px;font-family:'Cinzel',serif;font-size:11px;color:rgba(197,160,89,0.4);pointer-events:none}
+  #audio-btn{position:absolute;top:8px;right:64px;z-index:90;cursor:pointer;background:linear-gradient(180deg,rgba(26,20,15,0.9) 0%,rgba(14,10,7,0.95) 100%);border:1px solid #c5a059;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:0 4px 12px rgba(0,0,0,0.6);transition:transform .1s,border-color .15s}
+  #audio-btn:hover{transform:scale(1.1);border-color:#d4af37}
 
   /* Repair Progress Overlay */
   #repair-progress{position:absolute;bottom:160px;left:50%;transform:translateX(-50%);pointer-events:none;opacity:0;transition:opacity .2s;display:flex;flex-direction:column;align-items:center;gap:6px;z-index:95}
   #repair-progress.active{opacity:1}
-  .rp-label{font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;color:#fbbf24;letter-spacing:2px;text-transform:uppercase;text-shadow:0 0 10px rgba(251,191,36,0.8)}
-  .rp-bar-wrap{width:200px;height:8px;background:rgba(255,255,255,0.12);border-radius:4px;overflow:hidden;border:1px solid rgba(251,191,36,0.3)}
-  .rp-bar-fill{height:100%;background:linear-gradient(90deg,#fbbf24,#f59e0b);border-radius:4px;width:0%;transition:width .05s linear;box-shadow:0 0 8px rgba(245,158,11,0.6)}
-  .rp-hint{font-family:'Rajdhani',sans-serif;font-size:11px;color:rgba(255,255,255,0.55);letter-spacing:1px}
+  .rp-label{font-family:'Cinzel',serif;font-size:12px;font-weight:900;color:#d4af37;letter-spacing:2px;text-transform:uppercase;text-shadow:0 0 10px rgba(212,175,55,0.8)}
+  .rp-bar-wrap{width:220px;height:8px;background:rgba(20,14,10,0.8);border-radius:2px;overflow:hidden;border:1px solid #c5a059}
+  .rp-bar-fill{height:100%;background:linear-gradient(90deg,#9a3412,#d4af37);border-radius:2px;width:0%;transition:width .05s linear;box-shadow:0 0 8px rgba(212,175,55,0.6)}
+  .rp-hint{font-family:'Cinzel',serif;font-size:10px;color:rgba(244,235,217,0.65);letter-spacing:1px}
 
   /* Bucket Out-of-Ship indicator */
-  #bucket-aim-hint{position:absolute;top:42%;left:50%;transform:translateX(-50%);pointer-events:none;opacity:0;transition:opacity .2s;font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;color:#38bdf8;letter-spacing:2px;text-align:center;text-shadow:0 0 12px rgba(56,189,248,0.8);z-index:94;padding:8px 18px;background:rgba(9,20,34,0.85);border:1.5px solid rgba(56,189,248,0.5);border-radius:24px;backdrop-filter:blur(8px)}
+  #bucket-aim-hint{position:absolute;top:42%;left:50%;transform:translateX(-50%);pointer-events:none;opacity:0;transition:opacity .2s;font-family:'Cinzel',serif;font-size:12px;font-weight:700;color:#d4af37;letter-spacing:2px;text-align:center;text-shadow:0 2px 6px rgba(0,0,0,0.9);z-index:94;padding:8px 22px;background:linear-gradient(180deg,rgba(26,20,15,0.95) 0%,rgba(14,10,7,0.98) 100%);border:1.5px solid #c5a059;border-radius:4px;box-shadow:0 4px 20px rgba(0,0,0,0.8)}
   #bucket-aim-hint.show{opacity:1}
-  #bucket-aim-hint.overboard{color:#4ade80;border-color:rgba(74,222,128,0.8);text-shadow:0 0 14px rgba(74,222,128,0.9);background:rgba(6,32,18,0.90)}
-  #bucket-aim-hint.warning{color:#f87171;border-color:rgba(248,113,113,0.8);text-shadow:0 0 14px rgba(248,113,113,0.9);background:rgba(36,12,14,0.90)}
+  #bucket-aim-hint.overboard{color:#4ade80;border-color:#15803d}
+  #bucket-aim-hint.warning{color:#f87171;border-color:#b91c1c}
   .mc-slot.leak-alert{border-color:#ef4444!important;box-shadow:0 0 18px rgba(239,68,68,0.85),inset 0 0 10px rgba(239,68,68,0.3)!important;animation:leakSlotPulse 1s infinite alternate}
   @keyframes leakSlotPulse{0%{transform:scale(1.0)}100%{transform:scale(1.06)}}
 
   /* Player Health & Status Card (Top Left) */
-  #player-hp-card{position:absolute;top:10px;left:24px;display:flex;align-items:center;gap:12px;background:rgba(12,18,28,0.88);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.18);border-radius:24px;padding:6px 16px;box-shadow:0 4px 16px rgba(0,0,0,0.5);z-index:80}
+  #player-hp-card{position:absolute;top:10px;left:24px;display:flex;align-items:center;gap:12px;background:linear-gradient(180deg,rgba(26,20,15,0.95) 0%,rgba(14,10,7,0.98) 100%);border:1.5px solid #c5a059;border-radius:4px;padding:6px 16px;box-shadow:0 4px 20px rgba(0,0,0,0.8);z-index:80}
   .hp-icon{font-size:18px}
   .hp-info{display:flex;flex-direction:column;gap:3px}
   .hp-label-row{display:flex;justify-content:space-between;align-items:center;width:140px}
-  .hp-title{font-family:'Orbitron',sans-serif;font-size:8px;font-weight:700;color:rgba(255,255,255,0.6);letter-spacing:1px;text-transform:uppercase}
-  .hp-val{font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;color:#fff}
-  .hp-bar-wrap{width:140px;height:7px;background:rgba(255,255,255,0.12);border-radius:4px;overflow:hidden}
-  .hp-fill{height:100%;background:linear-gradient(90deg,#ef4444,#f87171);width:100%;transition:width .2s ease}
-  .stamina-fill{height:100%;background:linear-gradient(90deg,#fbbf24,#f59e0b);width:100%;transition:width .1s ease}
-  .hp-planks-pill{font-family:'Orbitron',sans-serif;font-size:9px;font-weight:700;color:#fde047;background:rgba(234,179,8,0.18);border:1px solid rgba(234,179,8,0.4);border-radius:12px;padding:3px 10px;letter-spacing:1px}
-  .hp-food-pill{font-family:'Orbitron',sans-serif;font-size:9px;font-weight:700;color:#86efac;background:rgba(34,197,94,0.18);border:1px solid rgba(34,197,94,0.4);border-radius:12px;padding:3px 10px;letter-spacing:1px}
+  .hp-title{font-family:'Cinzel',serif;font-size:9px;font-weight:700;color:#c5a059;letter-spacing:1px;text-transform:uppercase}
+  .hp-val{font-family:'Cinzel',serif;font-size:11px;font-weight:700;color:#f4ebd9}
+  .hp-bar-wrap{width:140px;height:6px;background:rgba(20,14,10,0.8);border:1px solid rgba(197,160,89,0.3);border-radius:2px;overflow:hidden}
+  .hp-fill{height:100%;background:linear-gradient(90deg,#991b1b,#ef4444);width:100%;transition:width .2s ease}
+  .stamina-fill{height:100%;background:linear-gradient(90deg,#92400e,#d4af37);width:100%;transition:width .1s ease}
+  .hp-planks-pill{font-family:'Cinzel',serif;font-size:9px;font-weight:700;color:#fde047;background:rgba(212,175,55,0.15);border:1px solid rgba(212,175,55,0.4);border-radius:2px;padding:3px 10px;letter-spacing:1px}
+  .hp-food-pill{font-family:'Cinzel',serif;font-size:9px;font-weight:700;color:#86efac;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.4);border-radius:2px;padding:3px 10px;letter-spacing:1px}
 
   /* Damage & Heal Vignette */
   #damage-vignette{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at center, transparent 40%, rgba(220,38,38,0.7) 100%);opacity:0;transition:opacity .15s ease-out;z-index:95}
@@ -202,75 +225,79 @@ document.head.insertAdjacentHTML("beforeend", `
   #damage-vignette.heal{opacity:0.85;background:radial-gradient(ellipse at center, transparent 35%, rgba(34,197,94,0.65) 100%)}
 
   /* Minimap Radar Card (Bottom Right, above sail) */
-  #minimap-card{position:absolute;bottom:96px;right:24px;width:150px;height:150px;border-radius:50%;background:rgba(9,20,34,0.85);backdrop-filter:blur(8px);border:3px solid rgba(217,119,6,0.65);box-shadow:0 6px 20px rgba(0,0,0,0.6),inset 0 0 16px rgba(0,0,0,0.7);overflow:hidden;pointer-events:none;display:flex;align-items:center;justify-content:center}
+  #minimap-card{position:absolute;bottom:96px;right:24px;width:150px;height:150px;border-radius:50%;background:rgba(14,10,7,0.92);border:3px solid #c5a059;box-shadow:0 6px 25px rgba(0,0,0,0.8),inset 0 0 20px rgba(0,0,0,0.9);overflow:hidden;pointer-events:none;display:flex;align-items:center;justify-content:center}
   #minimap-canvas{width:150px;height:150px;display:block}
-  #mm-n{position:absolute;top:5px;left:50%;transform:translateX(-50%);font-family:'Orbitron',sans-serif;font-size:9px;font-weight:900;color:#fbbf24;letter-spacing:1px}
-  #mm-title{position:absolute;bottom:5px;left:50%;transform:translateX(-50%);font-family:'Orbitron',sans-serif;font-size:7px;font-weight:700;color:rgba(255,255,255,0.45);letter-spacing:1.5px}
+  #mm-n{position:absolute;top:5px;left:50%;transform:translateX(-50%);font-family:'Cinzel',serif;font-size:10px;font-weight:900;color:#d4af37;letter-spacing:1px}
+  #mm-title{position:absolute;bottom:5px;left:50%;transform:translateX(-50%);font-family:'Cinzel',serif;font-size:8px;font-weight:700;color:rgba(197,160,89,0.7);letter-spacing:1.5px}
 
-  /* Minecraft-Style Hotbar (Bottom Center) */
-  #mc-hotbar{position:absolute;bottom:18px;left:50%;transform:translateX(-50%);display:flex;gap:6px;background:rgba(12,18,28,0.88);backdrop-filter:blur(10px);border:2px solid rgba(255,255,255,0.18);border-radius:12px;padding:6px;box-shadow:0 8px 32px rgba(0,0,0,0.7);z-index:70}
-  .mc-slot{width:56px;height:56px;border-radius:8px;background:rgba(255,255,255,0.06);border:2px solid rgba(255,255,255,0.12);display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;cursor:pointer;transition:all .15s cubic-bezier(.4,0,.2,1);user-select:none}
-  .mc-slot:hover{background:rgba(255,255,255,0.12);border-color:rgba(255,255,255,0.3)}
-  .mc-slot.active{background:rgba(245,158,11,0.22);border-color:#fbbf24;box-shadow:0 0 16px rgba(245,158,11,0.6),inset 0 0 10px rgba(245,158,11,0.3);transform:translateY(-4px)}
-  .mc-num{position:absolute;top:3px;left:5px;font-family:'Orbitron',sans-serif;font-size:9px;font-weight:700;color:rgba(255,255,255,0.5)}
-  .mc-slot.active .mc-num{color:#fbbf24}
-  .mc-icon{font-size:24px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.5))}
-  .mc-name{font-family:'Rajdhani',sans-serif;font-size:9px;font-weight:700;color:rgba(255,255,255,0.7);letter-spacing:0.5px;text-transform:uppercase;margin-top:2px}
-  .mc-badge{position:absolute;bottom:3px;right:5px;font-family:'Orbitron',sans-serif;font-size:10px;font-weight:900;color:#fff;background:rgba(0,0,0,0.65);border-radius:4px;padding:1px 4px;line-height:1}
+  /* Black Flag / Pirate-Themed Hotbar (Bottom Center) */
+  #mc-hotbar{position:absolute;bottom:18px;left:50%;transform:translateX(-50%);display:flex;gap:6px;background:linear-gradient(180deg,rgba(26,20,15,0.96) 0%,rgba(14,10,7,0.98) 100%);border:2px solid #c5a059;border-radius:4px;padding:6px;box-shadow:0 8px 35px rgba(0,0,0,0.9);z-index:70}
+  .mc-slot{width:56px;height:56px;border-radius:3px;background:rgba(40,28,20,0.5);border:1.5px solid rgba(197,160,89,0.3);display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;cursor:pointer;transition:all .15s cubic-bezier(.4,0,.2,1);user-select:none}
+  .mc-slot:hover{background:rgba(197,160,89,0.15);border-color:#e5c158}
+  .mc-slot.active{background:rgba(212,175,55,0.22);border-color:#d4af37;box-shadow:0 0 16px rgba(212,175,55,0.4),inset 0 0 10px rgba(212,175,55,0.2);transform:translateY(-3px)}
+  .mc-num{position:absolute;top:3px;left:5px;font-family:'Cinzel',serif;font-size:9px;font-weight:700;color:#c5a059}
+  .mc-slot.active .mc-num{color:#f4ebd9}
+  .mc-icon{font-size:24px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.8))}
+  .mc-name{font-family:'Cinzel',serif;font-size:9px;font-weight:700;color:#f4ebd9;letter-spacing:0.5px;text-transform:uppercase;margin-top:2px}
+  .mc-badge{position:absolute;bottom:3px;right:5px;font-family:'Cinzel',serif;font-size:10px;font-weight:900;color:#d4af37;background:rgba(10,8,6,0.85);border-radius:2px;padding:1px 4px;line-height:1}
 
   /* Ship Hull & Bilge Status HUD (Top Left) */
-  #damage-hud{position:absolute;top:64px;left:24px;pointer-events:none;background:rgba(12,18,28,0.85);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.14);border-radius:10px;padding:8px 14px;display:flex;flex-direction:column;gap:6px;box-shadow:0 4px 16px rgba(0,0,0,0.5);min-width:210px}
+  #damage-hud{position:absolute;top:64px;left:24px;pointer-events:none;background:linear-gradient(180deg,rgba(26,20,15,0.95) 0%,rgba(14,10,7,0.98) 100%);border:1.5px solid #c5a059;border-radius:4px;padding:8px 14px;display:flex;flex-direction:column;gap:6px;box-shadow:0 4px 20px rgba(0,0,0,0.8);min-width:210px}
   .dh-header{display:flex;justify-content:space-between;align-items:center}
-  .dh-title{font-family:'Orbitron',sans-serif;font-size:8px;letter-spacing:2px;color:rgba(56,189,248,0.9);text-transform:uppercase}
-  .dh-val{font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;color:#fff}
-  .dh-bar{width:100%;height:6px;background:rgba(255,255,255,0.1);border-radius:3px;overflow:hidden}
-  .dh-fill{height:100%;background:linear-gradient(90deg,#38bdf8,#0284c7);width:0%;transition:width .2s}
-  .dh-fill.danger{background:linear-gradient(90deg,#f59e0b,#ef4444)}
-  .dh-subrow{display:flex;justify-content:space-between;font-size:11px;color:rgba(255,255,255,0.6)}
+  .dh-title{font-family:'Cinzel',serif;font-size:9px;font-weight:700;letter-spacing:2px;color:#c5a059;text-transform:uppercase}
+  .dh-val{font-family:'Cinzel',serif;font-size:12px;font-weight:700;color:#f4ebd9}
+  .dh-bar{width:100%;height:6px;background:rgba(20,14,10,0.8);border:1px solid rgba(197,160,89,0.3);border-radius:2px;overflow:hidden}
+  .dh-fill{height:100%;background:linear-gradient(90deg,#0369a1,#38bdf8);width:0%;transition:width .2s}
+  .dh-fill.danger{background:linear-gradient(90deg,#991b1b,#dc2626)}
+  .dh-subrow{display:flex;justify-content:space-between;font-size:11px;color:rgba(244,235,217,0.7)}
 
-  /* Enemy Target Status Card */
-  #enemy-hud{position:absolute;top:132px;right:24px;pointer-events:none;background:rgba(18,12,14,0.9);backdrop-filter:blur(8px);border:1px solid rgba(239,68,68,0.4);border-radius:10px;padding:8px 14px;display:flex;flex-direction:column;gap:5px;box-shadow:0 4px 16px rgba(0,0,0,0.6);min-width:200px}
-  .eh-title{font-family:'Orbitron',sans-serif;font-size:9px;font-weight:900;letter-spacing:1px;color:#f87171;text-transform:uppercase}
-  /* Damage Waypoint Indicator — on-screen and edge-clamped modes */
+  /* Kraken Boss Health Bar (Top Center Banner) */
+  #kraken-boss-bar{position:absolute;top:20px;left:50%;transform:translateX(-50%);display:none;flex-direction:column;align-items:center;gap:4px;z-index:88;pointer-events:none}
+  #kraken-boss-bar.visible{display:flex}
+  .kbb-header{display:flex;align-items:center;gap:10px}
+  .kbb-icon{font-size:18px;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.8))}
+  .kbb-title{font-family:'Pirata One',cursive;font-size:24px;letter-spacing:3px;color:#ef4444;text-shadow:0 2px 10px rgba(0,0,0,0.95);text-transform:uppercase}
+  .kbb-frame{width:460px;height:14px;background:rgba(18,10,12,0.95);border:2px solid #c5a059;border-radius:3px;overflow:hidden;box-shadow:0 6px 25px rgba(0,0,0,0.9),inset 0 0 8px rgba(0,0,0,0.9)}
+  .kbb-fill{height:100%;background:linear-gradient(90deg,#7f1d1d,#dc2626);width:100%;transition:width .2s ease;box-shadow:0 0 10px rgba(220,38,38,0.7)}
+  .kbb-sub{font-family:'Cinzel',serif;font-size:10px;font-weight:700;letter-spacing:2px;color:#d4af37;text-transform:uppercase;text-shadow:0 1px 4px rgba(0,0,0,0.9)}
+
+  /* Damage Waypoint Indicator */
   #damage-waypoint{position:absolute;pointer-events:none;display:none;flex-direction:column;align-items:center;z-index:90;transition:opacity .15s}
   #damage-waypoint.visible{display:flex}
-  /* on-screen: offset up so arrow points AT the target */
   #damage-waypoint.on-screen{transform:translate(-50%,-110%)}
-  /* edge-clamped: rotate edge arrow to point inward */
   #damage-waypoint.edge{transform:translate(-50%,-50%)}
-  .dw-badge{background:rgba(20,10,12,0.92);backdrop-filter:blur(6px);border:1.5px solid #ef4444;box-shadow:0 0 16px rgba(239,68,68,0.7),inset 0 0 10px rgba(239,68,68,0.3);border-radius:20px;padding:4px 10px;display:flex;align-items:center;gap:6px;font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;color:#fff;letter-spacing:1px;animation:dwPulse 1s infinite alternate}
-  .dw-badge.near{border-color:#10b981;box-shadow:0 0 18px rgba(16,185,129,0.8),inset 0 0 10px rgba(16,185,129,0.3)}
-  .dw-badge.near .dw-icon{color:#10b981}
-  /* Edge arrow: a triangle that gets rotated to point toward off-screen leak */
-  .dw-arrow{width:0;height:0;border-left:8px solid transparent;border-right:8px solid transparent;border-bottom:14px solid #ef4444;filter:drop-shadow(0 2px 6px rgba(239,68,68,0.9));transition:transform .1s}
-  #damage-waypoint.on-screen .dw-arrow{border-bottom:none;border-top:8px solid #ef4444;margin-top:3px}
-  .dw-badge.near + .dw-arrow{border-bottom-color:#10b981;border-top-color:#10b981}
+  .dw-badge{background:linear-gradient(180deg,rgba(36,16,18,0.96) 0%,rgba(20,10,12,0.98) 100%);border:1.5px solid #dc2626;box-shadow:0 0 16px rgba(220,38,38,0.6);border-radius:4px;padding:4px 10px;display:flex;align-items:center;gap:6px;font-family:'Cinzel',serif;font-size:11px;font-weight:700;color:#fecaca;letter-spacing:1px;animation:dwPulse 1s infinite alternate}
+  .dw-badge.near{border-color:#15803d;box-shadow:0 0 18px rgba(21,128,61,0.7)}
+  .dw-badge.near .dw-icon{color:#4ade80}
+  .dw-arrow{width:0;height:0;border-left:8px solid transparent;border-right:8px solid transparent;border-bottom:14px solid #dc2626;filter:drop-shadow(0 2px 6px rgba(220,38,38,0.9));transition:transform .1s}
+  #damage-waypoint.on-screen .dw-arrow{border-bottom:none;border-top:8px solid #dc2626;margin-top:3px}
+  .dw-badge.near + .dw-arrow{border-bottom-color:#15803d;border-top-color:#15803d}
   @keyframes dwPulse{0%{transform:scale(0.96)}100%{transform:scale(1.04)}}
 
   /* ── FULLSCREEN NAUTICAL CHART & ADVENTURE MAP (M KEY) ── */
-  #world-map-modal{position:absolute;inset:0;background:rgba(5,9,18,0.88);backdrop-filter:blur(14px);z-index:120;display:none;opacity:0;transition:opacity .25s ease;flex-direction:row;align-items:stretch;justify-content:center;padding:24px;box-sizing:border-box}
+  #world-map-modal{position:absolute;inset:0;background:rgba(10,8,6,0.92);backdrop-filter:blur(14px);z-index:120;display:none;opacity:0;transition:opacity .25s ease;flex-direction:row;align-items:stretch;justify-content:center;padding:24px;box-sizing:border-box}
   #world-map-modal.open{display:flex;opacity:1;pointer-events:auto}
-  .map-container{flex:1;position:relative;background:#0d1b2a;border:2px solid #b45309;border-radius:12px;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,0.8),inset 0 0 40px rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center}
+  .map-container{flex:1;position:relative;background:#0d1b2a;border:2px solid #c5a059;border-radius:4px;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,0.9),inset 0 0 40px rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center}
   #map-canvas{width:100%;height:100%;display:block}
-  .map-sidebar{width:360px;margin-left:20px;background:rgba(15,23,42,0.92);border:2px solid rgba(217,119,6,0.6);border-radius:12px;padding:20px;box-sizing:border-box;display:flex;flex-direction:column;gap:14px;box-shadow:0 8px 32px rgba(0,0,0,0.6);color:#f1f5f9;overflow-y:auto}
-  .map-title-row{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(217,119,6,0.4);padding-bottom:12px}
-  .map-title{font-family:'Orbitron',sans-serif;font-size:16px;font-weight:900;letter-spacing:2px;color:#fbbf24;text-transform:uppercase}
-  .map-close-btn{background:rgba(239,68,68,0.2);border:1px solid #ef4444;color:#fca5a5;padding:4px 10px;border-radius:6px;font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;cursor:pointer}
-  .map-close-btn:hover{background:rgba(239,68,68,0.4);color:#fff}
-  .map-legend{display:flex;flex-direction:column;gap:6px;font-size:12px;background:rgba(0,0,0,0.3);padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.08)}
+  .map-sidebar{width:360px;margin-left:20px;background:linear-gradient(180deg,rgba(26,20,15,0.97) 0%,rgba(14,10,7,0.98) 100%);border:2px solid #c5a059;border-radius:4px;padding:20px;box-sizing:border-box;display:flex;flex-direction:column;gap:14px;box-shadow:0 8px 35px rgba(0,0,0,0.85);color:#f4ebd9;overflow-y:auto}
+  .map-title-row{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(197,160,89,0.4);padding-bottom:12px}
+  .map-title{font-family:'Pirata One',cursive;font-size:22px;letter-spacing:2px;color:#d4af37;text-transform:uppercase}
+  .map-close-btn{background:rgba(185,28,28,0.25);border:1px solid #b91c1c;color:#fca5a5;padding:4px 12px;border-radius:3px;font-family:'Cinzel',serif;font-size:11px;font-weight:700;cursor:pointer}
+  .map-close-btn:hover{background:rgba(185,28,28,0.5);color:#fff}
+  .map-legend{display:flex;flex-direction:column;gap:6px;font-size:12px;background:rgba(10,8,6,0.6);padding:10px;border-radius:4px;border:1px solid rgba(197,160,89,0.3)}
   .legend-item{display:flex;align-items:center;gap:10px}
   .legend-dot{width:12px;height:12px;border-radius:50%}
-  .island-card{background:rgba(255,255,255,0.04);border:1px solid rgba(217,119,6,0.3);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px;transition:all .15s}
-  .island-card:hover{background:rgba(245,158,11,0.12);border-color:#fbbf24;transform:translateY(-2px)}
+  .island-card{background:rgba(40,28,20,0.5);border:1px solid rgba(197,160,89,0.3);border-radius:4px;padding:12px;display:flex;flex-direction:column;gap:8px;transition:all .15s}
+  .island-card:hover{background:rgba(197,160,89,0.15);border-color:#d4af37;transform:translateY(-2px)}
   .ic-header{display:flex;justify-content:space-between;align-items:center}
-  .ic-name{font-family:'Orbitron',sans-serif;font-size:13px;font-weight:700;color:#fbbf24}
-  .ic-type{font-size:10px;text-transform:uppercase;letter-spacing:1px;padding:2px 6px;border-radius:4px;background:rgba(56,189,248,0.18);color:#38bdf8}
-  .ic-coords{font-size:11px;color:rgba(255,255,255,0.5)}
-  .ic-resources{display:flex;gap:10px;font-size:11px;color:#cbd5e1;background:rgba(0,0,0,0.3);padding:6px 10px;border-radius:6px}
-  .ic-mission{font-size:11px;border-left:3px solid #10b981;padding-left:8px;margin-top:2px}
-  .ic-m-title{font-weight:700;color:#34d399}
-  .ic-m-desc{color:rgba(255,255,255,0.7);font-size:10.5px}
-  .ic-m-reward{color:#fbbf24;font-weight:700;margin-top:2px}
+  .ic-name{font-family:'Cinzel',serif;font-size:13px;font-weight:700;color:#d4af37}
+  .ic-type{font-size:10px;text-transform:uppercase;letter-spacing:1px;padding:2px 6px;border-radius:2px;background:rgba(197,160,89,0.2);color:#f4ebd9;border:1px solid rgba(197,160,89,0.4)}
+  .ic-coords{font-size:11px;color:rgba(244,235,217,0.55)}
+  .ic-resources{display:flex;gap:10px;font-size:11px;color:#f4ebd9;background:rgba(10,8,6,0.6);padding:6px 10px;border-radius:4px}
+  .ic-mission{font-size:11px;border-left:3px solid #d4af37;padding-left:8px;margin-top:2px}
+  .ic-m-title{font-weight:700;color:#e5c158}
+  .ic-m-desc{color:rgba(244,235,217,0.75);font-size:10.5px}
+  .ic-m-reward{color:#d4af37;font-weight:700;margin-top:2px}
 </style>`);
 
 // ─── DOM ────────────────────────────────────────────────────────────────────
@@ -369,8 +396,15 @@ document.body.insertAdjacentHTML("beforeend", `
 <div id="spbar-wrap"><div id="spbar-bg"><div id="spbar-fill"></div></div></div>
 
 <div id="compass-wrap">
-  <div id="compass-dial"><div id="compass-tape"></div><div id="compass-marker"></div></div>
-  <div id="hdg-val">000°</div>
+  <div id="compass-dial">
+    <div id="compass-tape"></div>
+    <div id="compass-marker"></div>
+    <div id="compass-waypoint-pip"></div>
+  </div>
+  <div id="compass-sub">
+    <div id="hdg-val">000°</div>
+    <div id="wp-dist-val">-- M</div>
+  </div>
 </div>
 
 <div id="sail-wrap">
@@ -456,14 +490,15 @@ document.body.insertAdjacentHTML("beforeend", `
   </div>
 </div>
 
-<div id="enemy-hud">
-  <div class="eh-title">Target: HMS Dreadnought</div>
-  <div class="eh-status" id="enemy-status">AFLOAT · 0% WATER</div>
-  <div class="dh-bar"><div class="dh-fill danger" id="enemy-fill"></div></div>
-  <div class="dh-subrow">
-    <span id="enemy-leaks">No Leaks</span>
-    <span id="enemy-inflow">0.0%/s</span>
+<div id="kraken-boss-bar">
+  <div class="kbb-header">
+    <span class="kbb-icon">🦑</span>
+    <span class="kbb-title">THE KRAKEN — ABYSSAL TERROR</span>
   </div>
+  <div class="kbb-frame">
+    <div class="kbb-fill" id="kbb-fill"></div>
+  </div>
+  <div class="kbb-sub" id="kbb-sub">SEVERED TENTACLES: 0 / 4</div>
 </div>
 
 <!-- Fullscreen Nautical Adventure Chart (Press M) -->
@@ -531,7 +566,11 @@ function renderCannonStationHUD(cannon: CannonState) {
     const hud = document.getElementById("cannon-station-hud");
     if (!hud) return;
 
-    const sideName = cannon.side === "L" ? "PORT" : "STARBOARD";
+    let sideName = "PORT";
+    if (cannon.side === "R") sideName = "STARBOARD";
+    else if (cannon.side === "F") sideName = "BOW CHASER";
+    else if (cannon.side === "B") sideName = "STERN CHASER";
+
     const nameEl = document.getElementById("csh-name");
     const lvlEl  = document.getElementById("csh-level");
     const numEl  = document.getElementById("csh-ammo-num");
@@ -539,7 +578,7 @@ function renderCannonStationHUD(cannon: CannonState) {
     const statEl = document.getElementById("csh-status");
     const fillEl = document.getElementById("csh-rl-fill");
 
-    if (nameEl) nameEl.textContent = `${sideName} CANNON #${cannon.index + 1}`;
+    if (nameEl) nameEl.textContent = `${sideName} #${cannon.index + 1}`;
     if (lvlEl) {
         const stars = cannon.level === 3 ? "★★★" : cannon.level === 2 ? "★★☆" : "★☆☆";
         lvlEl.textContent = `${stars} LEVEL ${cannon.level}`;
@@ -663,35 +702,137 @@ const createScene = function () {
     wMat.setFloats("dirZ",        WAVE_PARAMS.map(w => w.direction.z));
     wMat.backFaceCulling = false; water.material = wMat;
 
-    // ─── PROCEDURAL ARCHIPELAGO WORLD MAP ────────────────────────────────────
-    const worldMap: WorldMap = generateWorldMap(DEFAULT_MAP_SEED, 16, 28);
-    const islandsRoot = new TransformNode("islandsRoot", scene);
-    for (const island of worldMap.islands) {
-        buildProceduralIsland(island, scene, islandsRoot);
-    }
-
+    // ─── CHAPTER 1 STORY SCENERY & ROUTE LANDMARKS ─────────────────────────
+    const chapterLevel: ChapterLevel = chapterLevelData as ChapterLevel;
+    const sceneryBuilder = new SceneryBuilder(scene, chapterLevel);
+    sceneryBuilder.buildAll();
+    const chapterColliders = getLevelColliders(chapterLevel);
+    const worldMap: WorldMap = generateWorldMap(DEFAULT_MAP_SEED, 0, 0); // terrain query container
 
     // ─── AUTONOMOUS ENEMY WARSHIP (HMS Dreadnought) ───────────────────────────
     const enemyMesh = new TransformNode("enemyShipNode", scene);
     const enemyShipHandles = buildProceduralShip(scene, enemyMesh, "enemy");
+    enemyMesh.setEnabled(false); // Hidden during opening story cutscenes until combat/ambush
     const enemyShipState: ShipState = {
-        x: AI_PATROL_CENTER_X,
-        z: AI_PATROL_CENTER_Z - AI_DEFAULT_PATROL_RADIUS,
-        heading: Math.PI / 2, // heading east along tangent
-        speed: 5.5,
+        x: chapterLevel.npcShips[0] ? chapterLevel.npcShips[0].spawn[0] : 250,
+        z: chapterLevel.npcShips[0] ? chapterLevel.npcShips[0].spawn[1] : 660,
+        heading: ((chapterLevel.npcShips[0]?.headingDeg || 90) * Math.PI) / 180,
+        speed: 0, // dormant until ambush
         yawRate: 0,
         waterLevel: 0,
     };
-    let enemyShipInput: ShipInput = { sail: 1.0, rudder: 0.2 };
+    let enemyShipInput: ShipInput = { sail: 0, rudder: 0 };
     let enemyHitFlash = 0;
 
     // ─── SHIP ────────────────────────────────────────────────────────────────
-    const shipState: ShipState = { x:0, z:0, heading:0, speed:0, yawRate:0, waterLevel:0 };
-    const shipInput: ShipInput = { sail:0, rudder:0 };
+    // Spawns in open stormy sea at Chapter 1 start coordinates (-1400, -1300), heading 40 deg
+    const startSpawnX = chapterLevel.spawn.pos[0];
+    const startSpawnZ = chapterLevel.spawn.pos[1];
+    const startHeading = (chapterLevel.spawn.headingDeg * Math.PI) / 180;
+
+    const shipState: ShipState = {
+        x: startSpawnX,
+        z: startSpawnZ,
+        heading: startHeading,
+        speed: 0,
+        yawRate: 0,
+        waterLevel: 0
+    };
+    const shipInput: ShipInput = { sail: 0, rudder: 0 };
     const SHIP_L = 34, SHIP_W = 10.6;
 
     const shipMesh = new TransformNode("ship", scene);
     const shipHandles: ShipHandles = buildProceduralShip(scene, shipMesh);
+
+    // ─── ROUTE GUIDANCE & FLOATING LANTERN MARKER ───────────────────────────
+    let currentRouteWaypointIndex = 0;
+
+    // Floating 3D waypoint beacon marker in the world
+    const waypointMarker = MeshBuilder.CreateSphere("waypointMarker", { diameter: 6, segments: 12 }, scene);
+    const wpMat = new StandardMaterial("wpMarkerMat", scene);
+    wpMat.emissiveColor = new Color3(0.98, 0.75, 0.14); // glowing gold
+    wpMat.diffuseColor = new Color3(1, 0.8, 0.2);
+    wpMat.alpha = 0.85;
+    waypointMarker.material = wpMat;
+    waypointMarker.position = new Vector3(chapterLevel.route[0].pos[0], 12, chapterLevel.route[0].pos[1]);
+
+    // ─── DRIFTING TARGET WRECKAGE (Beat S2: "Shoot drifting wreckage blocking channel") ───
+    interface DriftWreckageTarget {
+        id: number;
+        hp: number;
+        x: number;
+        z: number;
+        radius: number;
+        mesh: TransformNode;
+        dead: boolean;
+    }
+    const driftingWreckages: DriftWreckageTarget[] = [];
+    const wreckWoodMat = new StandardMaterial("driftWreckWoodMat", scene);
+    wreckWoodMat.diffuseColor = new Color3(0.38, 0.25, 0.14);
+    wreckWoodMat.specularColor = new Color3(0.1, 0.1, 0.1);
+
+    const wreckIronMat = new StandardMaterial("driftWreckIronMat", scene);
+    wreckIronMat.diffuseColor = new Color3(0.6, 0.2, 0.15); // rusty iron
+    wreckIronMat.emissiveColor = new Color3(0.2, 0.05, 0.05);
+
+    function spawnDriftingWreckageTargets() {
+        // Clear any previous
+        for (const w of driftingWreckages) {
+            w.mesh.dispose();
+        }
+        driftingWreckages.length = 0;
+
+        // Position 3 shootable wreckage barricades floating in the channel ahead of the ship
+        // Ship starts at (-1400, -1300) heading 40 deg.
+        // Channel waypoints: r0(-1350,-1240), r1(-1250,-1120), r2(-1150,-1000)
+        const spawnPoints = [
+            { x: -1320, z: -1200, r: 8, name: "Drifting Hull Section" },
+            { x: -1230, z: -1100, r: 7, name: "Broken Mast Timber" },
+            { x: -1130, z: -980,  r: 9, name: "Explosive Iron Barrel Raft" }
+        ];
+
+        spawnPoints.forEach((sp, idx) => {
+            const root = new TransformNode(`drift_target_${idx}`, scene);
+            root.position.set(sp.x, 0.5, sp.z);
+
+            // Broken wooden beams
+            const beam1 = MeshBuilder.CreateBox(`beam1_${idx}`, { width: 3, height: 1.8, depth: 16 }, scene);
+            beam1.material = wreckWoodMat;
+            beam1.rotation.y = 0.4 + idx * 0.5;
+            beam1.rotation.z = 0.15;
+            beam1.parent = root;
+
+            const beam2 = MeshBuilder.CreateBox(`beam2_${idx}`, { width: 2.2, height: 1.5, depth: 12 }, scene);
+            beam2.material = wreckWoodMat;
+            beam2.rotation.y = -0.6 + idx * 0.3;
+            beam2.parent = root;
+
+            // Red glowing powder keg / iron barrel in center
+            const barrel = MeshBuilder.CreateCylinder(`iron_barrel_${idx}`, { height: 3.5, diameter: 2.4 }, scene);
+            barrel.material = wreckIronMat;
+            barrel.position.y = 1.2;
+            barrel.parent = root;
+
+            // Floating debris ring
+            const foam = MeshBuilder.CreateTorus(`foam_${idx}`, { diameter: 14, thickness: 1.2 }, scene);
+            const fMat = new StandardMaterial(`fmat_${idx}`, scene);
+            fMat.diffuseColor = new Color3(0.9, 0.95, 1);
+            fMat.alpha = 0.45;
+            foam.material = fMat;
+            foam.position.y = -0.2;
+            foam.parent = root;
+
+            driftingWreckages.push({
+                id: idx,
+                hp: 1, // one direct cannon shot destroys it
+                x: sp.x,
+                z: sp.z,
+                radius: sp.r,
+                mesh: root,
+                dead: false
+            });
+        });
+    }
 
     // Ammo barrel glow material (swaps when player is near)
     const barrelNormalMat = shipHandles.ammoBarrel.material as StandardMaterial;
@@ -1322,6 +1463,105 @@ const createScene = function () {
         });
     }
 
+    // ─── STORY MODE SYSTEMS & UI ─────────────────────────────────────────────
+    const dialogueUI = new DialogueUI();
+    const objectiveUI = new ObjectiveUI();
+    const cutscenePlayer = new CutscenePlayer(scene, camera);
+    cutscenePlayer.setShipNode(shipMesh);
+
+    const weatherRenderer = new WeatherRenderer(scene, sun, amb, skyMat);
+    let currentWeather: WeatherState = createDefaultWeatherState();
+
+    const npcView = new NpcView(scene, shipMesh);
+    let npcCrew = createDefaultNpcCrew();
+
+    const krakenView = new KrakenView(scene);
+    let krakenBossState: KrakenBossState = createDefaultKrakenBoss(1);
+    krakenBossState.active = false; // inactive until beat S6/S7
+
+    const beatsData = chapterBeatsData as ChapterBeats;
+    const dialogueData = chapterDialogueData as ChapterDialogue;
+    const cutscenesData = chapterCutscenesData as ChapterCutscenes;
+
+    let currentStoryBeatId = beatsData.initialBeat;
+    let storyBeatTimer = 0;
+
+    function applyBeatActions(beatId: string) {
+        currentStoryBeatId = beatId;
+        storyBeatTimer = 0;
+        const beat = beatsData.beats.find(b => b.id === beatId);
+        if (!beat) return;
+
+        for (const act of beat.enter) {
+            if (act.do === "setObjective") {
+                objectiveUI.setObjective(act.text);
+            } else if (act.do === "say") {
+                const line = dialogueData.lines[act.line];
+                if (line) dialogueUI.playLine(line);
+            } else if (act.do === "setWeather") {
+                currentWeather.targetIntensity = act.intensity;
+                currentWeather.transitionSpeed = Math.abs(currentWeather.stormIntensity - act.intensity) / Math.max(1, act.seconds);
+            } else if (act.do === "playCutscene") {
+                const cs = cutscenesData.cutscenes[act.id];
+                if (cs) {
+                    cutscenePlayer.play(cs);
+                }
+            } else if (act.do === "spawn") {
+                if (act.type === "wreckage_drift") {
+                    spawnDriftingWreckageTargets();
+                    showToast("⚠️ DRIFTING WRECKAGE DETECTED DEAD AHEAD! MAN THE CANNONS!", "warning");
+                }
+            } else if (act.do === "startBoss") {
+                krakenBossState = createDefaultKrakenBoss(act.phase as 1 | 2 | 3);
+                krakenBossState.active = true;
+                showToast("🦑 THE KRAKEN HAS RISEN FROM THE DEPTHS!", "warning");
+            } else if (act.do === "startVote") {
+                dialogueUI.showModalScene(
+                    "Ship Council",
+                    "The storm rages around us. Make your choice:",
+                    act.options.map(o => ({
+                        id: o.id,
+                        label: o.label,
+                        flagKey: o.flagKey,
+                        flagValue: o.flagValue
+                    }))
+                );
+            }
+        }
+    }
+
+    dialogueUI.onChoiceSelected = (choiceId, flagKey, flagValue) => {
+        showToast(`🗳️ Voted: ${choiceId} (${flagKey}=${flagValue})`, "normal");
+        applyBeatActions("s5_the_quiet");
+        // Re-lock mouse cursor back to gameplay immediately after choice is submitted
+        try { canvas.requestPointerLock(); } catch { /* ignore */ }
+    };
+
+    cutscenePlayer.onCutsceneFinished = (cutsceneId) => {
+        if (cutsceneId === "cutscene_s0_wake") {
+            applyBeatActions("s1_the_wheel");
+            cutscenePlayer.getLetterbox().showTitle("CHAPTER I", "THE NIGHT OF THE WIDOW'S LANTERN", 3500);
+        } else if (cutsceneId === "cutscene_s3_rogue_wave") {
+            // After rogue wave impact, advance to s4 council vote
+            applyBeatActions("s4_lightning_chart");
+        } else if (cutsceneId === "cutscene_s4_lightning_reveal") {
+            // Cutscene completed, choice modal is already open
+        } else if (cutsceneId === "cutscene_s6_kraken_rising") {
+            // Boss cutscene done -> enter phase 1 boss battle
+            applyBeatActions("s7a_phase1");
+            cutscenePlayer.getLetterbox().showTitle("THE KRAKEN", "TERROR OF THE DEEP", 4000);
+        }
+    };
+
+    // Initialize initial beat
+    applyBeatActions(currentStoryBeatId);
+
+    // Story Debug Panel: Instant jump to any beat
+    new StoryDebugPanel(beatsData, (targetBeatId) => {
+        applyBeatActions(targetBeatId);
+        showToast(`📜 Jumped to Story Beat: ${targetBeatId}`, "normal");
+    });
+
     // Player position and physics
     let isAtHelm = false;
     let isGrounded = true;
@@ -1366,51 +1606,60 @@ const createScene = function () {
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // ── 1. Draw Islands ──
-        for (const island of worldMap.islands) {
-            const ix = cx + island.x * mapScale;
-            const iy = cy - island.z * mapScale;
-            const ir = Math.max(4, island.radius * mapScale);
+        // ── 1. Draw Chapter 1 Landmarks & Route ──
+        // Route Polyline
+        ctx.beginPath();
+        for (let i = 0; i < chapterLevel.route.length; i++) {
+            const pt = chapterLevel.route[i];
+            const rx = cx + pt.pos[0] * mapScale;
+            const ry = cy - pt.pos[1] * mapScale;
+            if (i === 0) ctx.moveTo(rx, ry);
+            else ctx.lineTo(rx, ry);
+        }
+        ctx.strokeStyle = "rgba(251, 191, 36, 0.65)";
+        ctx.lineWidth = 2.5;
+        ctx.setLineDash([6, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
 
-            // Shallow lagoon reef ring
+        // Route Waypoints
+        for (const pt of chapterLevel.route) {
+            const rx = cx + pt.pos[0] * mapScale;
+            const ry = cy - pt.pos[1] * mapScale;
             ctx.beginPath();
-            ctx.arc(ix, iy, ir * 1.35, 0, Math.PI * 2);
-            ctx.fillStyle = "rgba(45, 212, 191, 0.22)";
+            ctx.arc(rx, ry, 4, 0, Math.PI * 2);
+            ctx.fillStyle = "#fbbf24";
             ctx.fill();
+        }
 
-            // Land body
+        // Chapter 1 Landmarks
+        for (const lm of chapterLevel.landmarks) {
+            const pos = lm.pos || lm.center;
+            if (!pos) continue;
+            const lx = cx + pos[0] * mapScale;
+            const ly = cy - pos[1] * mapScale;
+            const lr = Math.max(5, (lm.radius || lm.ringRadius || 40) * mapScale);
+
             ctx.beginPath();
-            ctx.arc(ix, iy, ir, 0, Math.PI * 2);
-            if (island.type === "fortress") {
-                ctx.fillStyle = "#ca8a04"; // golden fortress
-                ctx.strokeStyle = "#fef08a";
-            } else if (island.type === "archipelago_hub") {
-                ctx.fillStyle = "#15803d"; // vibrant outpost greenery
+            ctx.arc(lx, ly, lr, 0, Math.PI * 2);
+            if (lm.id === "lantern_isle") {
+                ctx.fillStyle = "#15803d"; // lush island
                 ctx.strokeStyle = "#86efac";
-            } else if (island.type === "rock_needle" || island.type === "crag") {
-                ctx.fillStyle = "#475569"; // slate rock
-                ctx.strokeStyle = "#94a3b8";
+            } else if (lm.id === "maw_basin" || lm.id === "maw_teeth") {
+                ctx.fillStyle = "rgba(45, 212, 191, 0.4)";
+                ctx.strokeStyle = "#2dd4bf";
             } else {
-                ctx.fillStyle = "#d97706"; // tropical beach sand
-                ctx.strokeStyle = "#fde68a";
+                ctx.fillStyle = "#475569";
+                ctx.strokeStyle = "#94a3b8";
             }
             ctx.lineWidth = 1.5;
             ctx.fill();
             ctx.stroke();
 
-            // Island Name label & Mission badge
-            if (island.radius >= 60 || island.type === "fortress" || island.type === "archipelago_hub") {
-                ctx.font = "bold 10px 'Orbitron', sans-serif";
-                ctx.fillStyle = "#f8fafc";
-                ctx.textAlign = "center";
-                ctx.fillText(island.name, ix, iy - ir - 6);
-
-                if (island.mission) {
-                    ctx.font = "bold 9px 'Rajdhani', sans-serif";
-                    ctx.fillStyle = "#34d399";
-                    ctx.fillText(`📜 ${island.mission.difficulty}`, ix, iy + ir + 12);
-                }
-            }
+            ctx.font = "bold 9px 'Orbitron', sans-serif";
+            ctx.fillStyle = "#f8fafc";
+            ctx.textAlign = "center";
+            ctx.fillText(lm.id.replace(/_/g, " ").toUpperCase(), lx, ly - lr - 4);
         }
 
         // ── 2. Enemy Warship Blip ──
@@ -1658,10 +1907,12 @@ const createScene = function () {
     const getInteractTarget = (): InteractTarget => {
         if (activeCannon || isAtHelm) return { type: "none" };
 
-        // Check ship boarding ladders first if in water or near gunwale ladder rungs
-        const nearLad = getNearLadder();
-        if (nearLad) {
-            return { type: "ladder", side: nearLad.side };
+        // If player is swimming in ocean, ladders are highest priority to board the ship
+        if (playerLocation !== "ship") {
+            const nearLad = getNearLadder();
+            if (nearLad) {
+                return { type: "ladder", side: nearLad.side };
+            }
         }
 
         if (playerLocation === "ship") {
@@ -1683,6 +1934,14 @@ const createScene = function () {
             if (nc) return { type: "cannon", nc };
             if (bDist < BARREL_INTERACT_RADIUS) return { type: "barrel" };
             if (nearGrate) return { type: "bilge" };
+
+            // When on ship, only offer ladder if right at the outer gunwale edge (X > 4.6)
+            if (Math.abs(pPos.x) >= 4.6) {
+                const nearLad = getNearLadder();
+                if (nearLad) {
+                    return { type: "ladder", side: nearLad.side };
+                }
+            }
         }
 
         return { type: "none" };
@@ -2054,6 +2313,36 @@ const createScene = function () {
             toggleWorldMap();
         }
 
+        // F3: Toggle Chapter 1 Scenery Debug Overlay
+        if (e.code === "F3") {
+            const dbgPanel = document.getElementById("story-debug-panel");
+            if (dbgPanel) {
+                const isHidden = dbgPanel.style.display === "none";
+                dbgPanel.style.display = isHidden ? "flex" : "none";
+                showToast(isHidden ? "🛠️ Scenery Debug Overlay: ON" : "🛠️ Scenery Debug Overlay: OFF", "normal");
+            }
+        }
+
+        // F4: Teleport to Next Route Point
+        if (e.code === "F4") {
+            let nextPtIdx = 0;
+            let minDist = Infinity;
+            for (let i = 0; i < chapterLevel.route.length; i++) {
+                const pt = chapterLevel.route[i];
+                const d = Math.hypot(shipState.x - pt.pos[0], shipState.z - pt.pos[1]);
+                if (d < minDist) {
+                    minDist = d;
+                    nextPtIdx = (i + 1) % chapterLevel.route.length;
+                }
+            }
+            const targetPt = chapterLevel.route[nextPtIdx];
+            currentRouteWaypointIndex = nextPtIdx;
+            shipState.x = targetPt.pos[0];
+            shipState.z = targetPt.pos[1];
+            shipState.speed = 0;
+            showToast(`🚀 Teleported to Route ${targetPt.id.toUpperCase()} (${targetPt.pos[0]}, ${targetPt.pos[1]})`, "success");
+        }
+
         // Escape: Close Map if open
         if (e.code === "Escape") {
             if (isMapOpen) {
@@ -2247,7 +2536,10 @@ const createScene = function () {
         updateHotbarUI();
         playItemSwitch();
     });
-    canvas.addEventListener("click", () => canvas.requestPointerLock());
+    canvas.addEventListener("click", () => {
+        if (dialogueUI.isModalOpen() || isMapOpen) return;
+        canvas.requestPointerLock();
+    });
 
     // Initial HUD Renders
     renderPlayerAmmo(playerAmmo);
@@ -2363,19 +2655,39 @@ const createScene = function () {
             }
         }
 
-        // ── Ship-to-Island Collision Resolution ──────────────────────────────
-        const islCol = resolveShipIslandCollisions(shipState, worldMap);
-        if (islCol.collided) {
-            cameraShake = Math.max(cameraShake, 0.45);
-            if (!collisionToastCooldown) {
-                collisionToastCooldown = true;
-                playShipCollision();
-                showToast(`🏝️ RUN AGROUND! Collided with ${islCol.island?.name}!`, "warning");
-                setTimeout(() => { collisionToastCooldown = false; }, 3000);
+        // ── Ship Collision Against Chapter 1 Scenery Landmarks ──────────────
+        for (const col of chapterColliders) {
+            const dx = shipState.x - col.x;
+            const dz = shipState.z - col.z;
+            const distSq = dx * dx + dz * dz;
+            const minDist = col.radius + SHIP_COLLISION_RADIUS;
+            if (distSq < minDist * minDist) {
+                const dist = Math.sqrt(distSq) || 0.001;
+                const penetration = minDist - dist;
+                const nx = dx / dist;
+                const nz = dz / dist;
+
+                shipState.x += nx * penetration;
+                shipState.z += nz * penetration;
+                shipState.speed = Math.max(0, shipState.speed * 0.4 - 1.5);
+
+                cameraShake = Math.max(cameraShake, 0.45);
+                if (!collisionToastCooldown) {
+                    collisionToastCooldown = true;
+                    playShipCollision();
+                    showToast(`⚠️ COLLISION! Struck reef or rock pillar!`, "warning");
+                    setTimeout(() => { collisionToastCooldown = false; }, 2500);
+                }
             }
         }
-        if (!enemyDamage.isSunk) {
-            resolveShipIslandCollisions(enemyShipState, worldMap);
+
+        // Storm wall inward push beyond playRadius (2000m)
+        const shipDistFromOrigin = Math.sqrt(shipState.x * shipState.x + shipState.z * shipState.z);
+        if (shipDistFromOrigin > chapterLevel.bounds.playRadius) {
+            const pushDirX = -shipState.x / shipDistFromOrigin;
+            const pushDirZ = -shipState.z / shipDistFromOrigin;
+            shipState.x += pushDirX * 0.8;
+            shipState.z += pushDirZ * 0.8;
         }
 
 
@@ -2393,21 +2705,25 @@ const createScene = function () {
         const eRoll  = Math.atan2(eyL - eyR, SHIP_W) * 0.18;
 
         const playerBuoyancy = calcBuoyancyOffset(playerDamage.waterLevel);
-        const enemyBuoyancy  = calcBuoyancyOffset(enemyDamage.waterLevel);
+        const enemyBuoyancy = calcBuoyancyOffset(enemyDamage.waterLevel);
+        const enemyActiveInStory = (currentStoryBeatId === "s5b_reavers" || currentStoryBeatId === "s5c_the_quiet" || currentStoryBeatId === "s6_rising") && !enemyDamage.isSunk;
+        enemyMesh.setEnabled(enemyActiveInStory);
 
-        enemyMesh.position.set(enemyShipState.x, eHeave + 1.2 + enemyBuoyancy, enemyShipState.z);
+        if (enemyActiveInStory) {
+            enemyMesh.position.set(enemyShipState.x, eHeave + 1.2 + enemyBuoyancy, enemyShipState.z);
 
-        if (enemyDamage.isSinking) {
-            enemyMesh.rotation.set(
-                ePitch + enemyDamage.sinkTimer * 0.04,
-                enemyShipState.heading,
-                eRoll + Math.sin(time * 2) * 0.15 + enemyDamage.sinkTimer * 0.03
-            );
-            if (enemyDamage.isSunk) {
-                enemyMesh.setEnabled(false);
+            if (enemyDamage.isSinking) {
+                enemyMesh.rotation.set(
+                    ePitch + enemyDamage.sinkTimer * 0.04,
+                    enemyShipState.heading,
+                    eRoll + Math.sin(time * 2) * 0.15 + enemyDamage.sinkTimer * 0.03
+                );
+                if (enemyDamage.isSunk) {
+                    enemyMesh.setEnabled(false);
+                }
+            } else {
+                enemyMesh.rotation.set(ePitch, enemyShipState.heading, eRoll);
             }
-        } else {
-            enemyMesh.rotation.set(ePitch, enemyShipState.heading, eRoll);
         }
 
         // Animate enemy ship components
@@ -2895,6 +3211,64 @@ const createScene = function () {
                     triggerShipHit(hx, hy, hz);
                 }
             } else {
+                // Check collision against drifting wreckage obstacles (Beat S2)
+                for (const dw of driftingWreckages) {
+                    if (dw.dead) continue;
+                    const dWreck = Math.hypot(curr.x - dw.x, curr.z - dw.z);
+                    if (dWreck <= dw.radius && curr.y >= -2 && curr.y <= 6) {
+                        pb.state.dead = true;
+                        dw.dead = true;
+                        dw.mesh.dispose();
+                        cameraShake = 0.4;
+                        playHullImpact();
+                        createExplosionVFX(curr);
+                        showToast("💥 WRECKAGE DESTROYED! Channel clearing!", "success");
+
+                        // Check if all wreckage cleared -> trigger Beat S3 breach
+                        const remaining = driftingWreckages.filter(w => !w.dead).length;
+                        if (remaining === 0) {
+                            showToast("⚓ All obstacles cleared! Full speed ahead!", "success");
+                            setTimeout(() => {
+                                applyBeatActions("s3_breach");
+                            }, 1200);
+                        }
+                        break;
+                    }
+                }
+
+                // Check collision against active Kraken tentacles
+                if (krakenBossState.active) {
+                    for (const tentacle of krakenBossState.tentacles) {
+                        const hitRes = testCannonballTentacleHit(curr, CANNONBALL_RADIUS, tentacle, shipMesh.position, performance.now() / 1000);
+                        if (hitRes.hit) {
+                            pb.state.dead = true;
+                            cameraShake = 0.5;
+                            playHullImpact();
+                            createExplosionVFX(curr);
+
+                            tentacle.hp -= hitRes.damage;
+                            if (tentacle.hp <= 0) {
+                                tentacle.state = "SEVERED";
+                                tentacle.stateTimer = 0;
+                                krakenBossState.severedCount++;
+                                showToast(`🦑 TENTACLE SEVERED! (${krakenBossState.severedCount}/${krakenBossState.targetSevered})`, "warning");
+                                if (krakenBossState.severedCount >= krakenBossState.targetSevered) {
+                                    applyBeatActions("s8_the_wave");
+                                }
+                            } else {
+                                tentacle.state = "WOUNDED";
+                                tentacle.stateTimer = 0;
+                                if (hitRes.isWeakPoint) {
+                                    showToast("⚡ CRITICAL WEAK POINT HIT! (3x Damage)", "warning");
+                                } else {
+                                    showToast(`💥 Tentacle Hit! (${tentacle.hp}/${tentacle.maxHp} HP)`, "normal");
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+
                 // Player projectile: check collision with moving enemy ship
                 const enemyBox = makeShipBox(
                     enemyShipState.x,
@@ -2979,47 +3353,49 @@ const createScene = function () {
         const shakeY = cameraShake > 0 ? (Math.random() - 0.5) * cameraShake : 0;
         cameraShake = Math.max(0, cameraShake - dt * 2.8);
 
-        if (isThirdPerson && !activeCannon) {
-            // Over-the-shoulder 3rd-person camera:
-            // Camera orbits around player, positioned behind the right shoulder
-            // so character is on the left side of the screen and crosshair is on the right
-            const ARM = 3.2; // comfortable distance behind player
-            const SHOULDER = 0.65; // offset to right shoulder
-            const cosP = Math.cos(tpPitch);
-            const sinP = Math.sin(tpPitch);
-            const rightX = Math.cos(tpYaw);
-            const rightZ = -Math.sin(tpYaw);
+        if (!cutscenePlayer.active) {
+            if (isThirdPerson && !activeCannon) {
+                // Over-the-shoulder 3rd-person camera:
+                // Camera orbits around player, positioned behind the right shoulder
+                // so character is on the left side of the screen and crosshair is on the right
+                const ARM = 3.2; // comfortable distance behind player
+                const SHOULDER = 0.65; // offset to right shoulder
+                const cosP = Math.cos(tpPitch);
+                const sinP = Math.sin(tpPitch);
+                const rightX = Math.cos(tpYaw);
+                const rightZ = -Math.sin(tpYaw);
 
-            // In playerNode coordinates:
-            // Forward is (sin(tpYaw), 0, cos(tpYaw))
-            // Right is (cos(tpYaw), 0, -sin(tpYaw))
-            camera.position.x = -Math.sin(tpYaw) * ARM * cosP + rightX * SHOULDER + shakeX;
-            camera.position.y = 0.35 + ARM * sinP + shakeY;
-            camera.position.z = -Math.cos(tpYaw) * ARM * cosP + rightZ * SHOULDER;
-            camera.rotation.y = tpYaw;
-            camera.rotation.x = tpPitch;
-            camera.rotation.z = 0;
-        } else if (isThirdPerson && activeCannon) {
-            const ARM2 = 2.4;
-            const SHOULDER_C = 0.50;
-            const baseAngle = activeCannon.side === "L" ? -Math.PI / 2 : Math.PI / 2;
-            const canYaw = baseAngle + activeCannon.aimYaw;
-            const cosP = Math.cos(activeCannon.aimPitch);
-            const sinP = Math.sin(activeCannon.aimPitch);
-            const rightX = Math.cos(canYaw);
-            const rightZ = -Math.sin(canYaw);
+                // In playerNode coordinates:
+                // Forward is (sin(tpYaw), 0, cos(tpYaw))
+                // Right is (cos(tpYaw), 0, -sin(tpYaw))
+                camera.position.x = -Math.sin(tpYaw) * ARM * cosP + rightX * SHOULDER + shakeX;
+                camera.position.y = 0.35 + ARM * sinP + shakeY;
+                camera.position.z = -Math.cos(tpYaw) * ARM * cosP + rightZ * SHOULDER;
+                camera.rotation.y = tpYaw;
+                camera.rotation.x = tpPitch;
+                camera.rotation.z = 0;
+            } else if (isThirdPerson && activeCannon) {
+                const ARM2 = 2.4;
+                const SHOULDER_C = 0.50;
+                const baseAngle = activeCannon.side === "L" ? -Math.PI / 2 : Math.PI / 2;
+                const canYaw = baseAngle + activeCannon.aimYaw;
+                const cosP = Math.cos(activeCannon.aimPitch);
+                const sinP = Math.sin(activeCannon.aimPitch);
+                const rightX = Math.cos(canYaw);
+                const rightZ = -Math.sin(canYaw);
 
-            camera.position.x = -Math.sin(canYaw) * ARM2 * cosP + rightX * SHOULDER_C + shakeX;
-            camera.position.y = 0.35 - ARM2 * sinP + shakeY;
-            camera.position.z = -Math.cos(canYaw) * ARM2 * cosP + rightZ * SHOULDER_C;
-            camera.rotation.y = canYaw;
-            camera.rotation.x = -activeCannon.aimPitch;
-            camera.rotation.z = 0;
-        } else {
-            // First-person
-            camera.position.x = shakeX;
-            camera.position.y = shakeY;
-            camera.position.z = 0;
+                camera.position.x = -Math.sin(canYaw) * ARM2 * cosP + rightX * SHOULDER_C + shakeX;
+                camera.position.y = 0.35 - ARM2 * sinP + shakeY;
+                camera.position.z = -Math.cos(canYaw) * ARM2 * cosP + rightZ * SHOULDER_C;
+                camera.rotation.y = canYaw;
+                camera.rotation.x = -activeCannon.aimPitch;
+                camera.rotation.z = 0;
+            } else {
+                // First-person
+                camera.position.x = shakeX;
+                camera.position.y = shakeY;
+                camera.position.z = 0;
+            }
         }
 
 
@@ -3128,6 +3504,50 @@ const createScene = function () {
                         ctx.restore();
                     }
                 }
+
+                // ── Story Chapter Route Polyline & Waypoints on Tactical Radar ──
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(cx, cy, cx - 6, 0, Math.PI * 2);
+                ctx.clip();
+
+                // Draw connecting dashed golden course line
+                ctx.beginPath();
+                for (let i = 0; i < chapterLevel.route.length; i++) {
+                    const pt = chapterLevel.route[i];
+                    const rpx = cx + (pt.pos[0] - shipState.x) * scale;
+                    const rpy = cy - (pt.pos[1] - shipState.z) * scale;
+                    if (i === 0) ctx.moveTo(rpx, rpy);
+                    else ctx.lineTo(rpx, rpy);
+                }
+                ctx.strokeStyle = "rgba(251, 191, 36, 0.75)";
+                ctx.lineWidth = 2.0;
+                ctx.setLineDash([4, 3]);
+                ctx.shadowColor = "#fbbf24";
+                ctx.shadowBlur = 6;
+                ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.shadowBlur = 0;
+
+                // Draw waypoints
+                for (let i = 0; i < chapterLevel.route.length; i++) {
+                    const pt = chapterLevel.route[i];
+                    const rpx = cx + (pt.pos[0] - shipState.x) * scale;
+                    const rpy = cy - (pt.pos[1] - shipState.z) * scale;
+                    const isNextWp = (i === currentRouteWaypointIndex);
+
+                    ctx.beginPath();
+                    ctx.arc(rpx, rpy, isNextWp ? 4.5 : 2.5, 0, Math.PI * 2);
+                    ctx.fillStyle = isNextWp ? "#fef08a" : "rgba(251, 191, 36, 0.85)";
+                    ctx.fill();
+
+                    if (isNextWp) {
+                        ctx.strokeStyle = "#f59e0b";
+                        ctx.lineWidth = 1.5;
+                        ctx.stroke();
+                    }
+                }
+                ctx.restore();
 
 
                 // Enemy Ship Blip on Tactical Minimap
@@ -3458,6 +3878,75 @@ const createScene = function () {
         tape.style.left = `${90 - (hdeg / 360) * 260}px`;
         (document.getElementById("hdg-val")!).textContent = hdeg.toFixed(0).padStart(3, "0") + "°";
 
+        // Route Waypoint Compass Guidance & Distance
+        const currentTargetWp = chapterLevel.route[currentRouteWaypointIndex];
+        if (currentTargetWp) {
+            const dxWp = currentTargetWp.pos[0] - shipState.x;
+            const dzWp = currentTargetWp.pos[1] - shipState.z;
+            const distToWp = Math.hypot(dxWp, dzWp);
+
+            // Bearing to target waypoint in degrees (0 = North, 90 = East)
+            const targetBearingRad = Math.atan2(dxWp, dzWp);
+            const targetBearingDeg = (targetBearingRad * 180 / Math.PI + 360) % 360;
+
+            // Difference relative to ship heading (-180 to 180)
+            const diffDeg = (targetBearingDeg - hdeg + 540) % 360 - 180;
+
+            const pipEl = document.getElementById("compass-waypoint-pip");
+            if (pipEl) {
+                pipEl.style.display = "block";
+                // Center is at 110px in a 220px wide dial. Dial displays ~180 degrees span
+                const dialCenter = 110;
+                const pxPerDeg = 220 / 180;
+                const clampedOffset = Math.max(-100, Math.min(100, diffDeg * pxPerDeg));
+                pipEl.style.left = `${dialCenter + clampedOffset}px`;
+            }
+
+            const distEl = document.getElementById("wp-dist-val");
+            if (distEl) {
+                distEl.textContent = `${currentTargetWp.id.toUpperCase()}: ${Math.round(distToWp)}M`;
+            }
+
+            // Floating 3D lantern marker animation & fade
+            waypointMarker.position.x = currentTargetWp.pos[0];
+            waypointMarker.position.z = currentTargetWp.pos[1];
+            waypointMarker.position.y = 8 + Math.sin(performance.now() / 600) * 2;
+            // Fade out when within 150m
+            const fadeAlpha = Math.max(0.15, Math.min(0.9, (distToWp - 80) / 150));
+            wpMat.alpha = fadeAlpha;
+
+            // Advance waypoint when reached (< 90m)
+            if (distToWp < 90 && currentRouteWaypointIndex < chapterLevel.route.length - 1) {
+                currentRouteWaypointIndex++;
+                showToast(`📍 Reached Waypoint: ${currentTargetWp.id.toUpperCase()}`, "success");
+            }
+        }
+
+        // Animate floating drifting wreckage targets
+        const nowMs = performance.now();
+        for (const dw of driftingWreckages) {
+            if (dw.dead) continue;
+            dw.mesh.position.y = 0.5 + Math.sin(nowMs / 800 + dw.id) * 0.45;
+            dw.mesh.rotation.z = Math.sin(nowMs / 1200 + dw.id) * 0.08;
+
+            // If player ship collides with un-destroyed wreckage
+            const distToShip = Math.hypot(shipState.x - dw.x, shipState.z - dw.z);
+            if (distToShip < (SHIP_L / 2 + dw.radius) * 0.8) {
+                shipState.speed *= 0.35; // violent deceleration
+                cameraShake = 0.75;
+                // Explode & destroy wreckage
+                dw.dead = true;
+                dw.mesh.dispose();
+                triggerShipHit(dw.x, shipMesh.position.y + 1.2, dw.z);
+                createExplosionVFX({ x: dw.x, y: 1.5, z: dw.z });
+                if (!collisionToastCooldown) {
+                    collisionToastCooldown = true;
+                    showToast("⚠️ HULL BREACHED BY WRECKAGE! Equip Mallet & Planks [2] to repair, or Bail [3]!", "warning");
+                    setTimeout(() => { collisionToastCooldown = false; }, 3000);
+                }
+            }
+        }
+
         document.querySelectorAll(".sail-seg").forEach((el, i) => {
             el.classList.toggle("active", shipInput.sail >= (i + 1) / 5 - 0.01);
         });
@@ -3529,28 +4018,22 @@ const createScene = function () {
         (document.getElementById("leak-rate-val")!).textContent =
             pInflow > 0 ? `Leaks: +${(pInflow * 100).toFixed(1)}%/s` : "Dry (0.0%/s)";
 
-        // Update Enemy Target Status HUD
-        const eInflow = calcInflowRate(enemyDamage);
-        const eWaterPct = Math.round(enemyDamage.waterLevel * 100);
-        const eFill = document.getElementById("enemy-fill") as HTMLElement;
-        eFill.style.width = `${eWaterPct}%`;
-        const eStatusEl = document.getElementById("enemy-status")!;
-        const enemyDist = Math.hypot(enemyShipState.x - shipState.x, enemyShipState.z - shipState.z);
-        const enemyKn = enemyShipState.speed * 1.944;
-        if (enemyDamage.isSunk) {
-            eStatusEl.textContent = "☠️ SUNK UNDER WAVES";
-            eStatusEl.style.color = "#ef4444";
-        } else if (enemyDamage.isSinking) {
-            eStatusEl.textContent = `⚠️ SINKING FAST · ${enemyDist.toFixed(0)}m`;
-            eStatusEl.style.color = "#f59e0b";
-        } else {
-            eStatusEl.textContent = `AFLOAT · ${eWaterPct}% WATER · ${enemyDist.toFixed(0)}m (${enemyKn.toFixed(1)} kn)`;
-            eStatusEl.style.color = "#fff";
+        // Update Kraken Boss Bar
+        const kbBar = document.getElementById("kraken-boss-bar");
+        if (kbBar) {
+            kbBar.classList.toggle("visible", krakenBossState.active);
+            if (krakenBossState.active) {
+                const totalHp = krakenBossState.tentacles.reduce((sum, t) => sum + Math.max(0, t.hp), 0);
+                const maxHp = krakenBossState.tentacles.reduce((sum, t) => sum + t.maxHp, 0);
+                const pct = maxHp > 0 ? (totalHp / maxHp) * 100 : 0;
+                const kbFill = document.getElementById("kbb-fill");
+                if (kbFill) kbFill.style.width = `${pct}%`;
+                const kbSub = document.getElementById("kbb-sub");
+                if (kbSub) {
+                    kbSub.textContent = `SEVERED TENTACLES: ${krakenBossState.severedCount} / ${krakenBossState.targetSevered}`;
+                }
+            }
         }
-        (document.getElementById("enemy-leaks")!).textContent =
-            `${enemyDamage.slots.filter(s => s.active).length} Leaks`;
-        (document.getElementById("enemy-inflow")!).textContent =
-            `+${(eInflow * 100).toFixed(1)}%/s`;
 
         // Station Overlays
         document.getElementById("helm-ov")!.classList.toggle("visible", isAtHelm);
@@ -3561,6 +4044,53 @@ const createScene = function () {
         stationHud.classList.toggle("visible", !!activeCannon);
         if (activeCannon) {
             renderCannonStationHUD(activeCannon);
+        }
+
+        // Story Mode: Cutscenes, Weather, and NPC Crew Simulation
+        if (cutscenePlayer.active) {
+            cutscenePlayer.update(dt);
+        }
+
+        storyBeatTimer += dt;
+        const currentBeat = beatsData.beats.find(b => b.id === currentStoryBeatId);
+        if (currentBeat && !cutscenePlayer.active) {
+            for (const trig of currentBeat.triggers) {
+                if (trig.when === "timeElapsed" && storyBeatTimer >= trig.s) {
+                    applyBeatActions(trig.then);
+                    break;
+                } else if (trig.when === "hpBelow" && trig.entity === "ship_water" && playerDamage.waterLevel <= trig.pct && storyBeatTimer >= 5.0) {
+                    applyBeatActions(trig.then);
+                    break;
+                }
+            }
+        }
+
+        currentWeather = stepWeather(currentWeather, dt, shipState.x, shipState.z);
+        weatherRenderer.update(currentWeather, shipMesh.position);
+
+        const occupiedStations = new Set<string>();
+        if (isAtHelm) occupiedStations.add("wheel");
+        if (activeCannon) {
+            occupiedStations.add(activeCannon.side === "L" ? "cannons_port" : "cannons_starboard");
+        }
+        if (isRepairing) occupiedStations.add("repairs");
+
+        npcCrew = stepNpcCrew(npcCrew, occupiedStations, playerDamage.waterLevel, dt);
+        npcView.updateCrew(npcCrew, time);
+
+        // Kraken Boss State Machine & Animated Tentacles
+        if (krakenBossState.active) {
+            const krakenRes = stepKrakenBoss(krakenBossState, dt, shipMesh.position);
+            krakenBossState = krakenRes.boss;
+            krakenView.update(krakenBossState, shipMesh.position, performance.now() / 1000);
+
+            // Handle tentacle slam damage events
+            for (const slam of krakenRes.slamEvents) {
+                cameraShake = 0.85;
+                playHullImpact();
+                triggerShipHit(slam.x + (Math.random() - 0.5) * 4, shipMesh.position.y + 2, slam.z + (Math.random() - 0.5) * 4);
+                showToast("⚠️ KRAKEN TENTACLE SLAMMED THE SHIP!", "warning");
+            }
         }
 
         (document.getElementById("fps")!).textContent = engine.getFps().toFixed(0) + " fps";

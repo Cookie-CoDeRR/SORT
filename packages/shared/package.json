@@ -9,6 +9,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@colyseus/schema": "^2.0.0"
+    "@colyseus/schema": "^2.0.0",
+    "zod": "^4.6.5"
   }
 }
